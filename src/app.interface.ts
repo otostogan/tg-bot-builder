@@ -1,6 +1,35 @@
 import { ModuleMetadata } from '@nestjs/common';
 import type TelegramBot from 'node-telegram-bot-api';
 import type { AnySchema } from 'yup';
+import type { PrismaService } from './prisma/prisma.service';
+
+export type TPrismaJsonValue =
+    | string
+    | number
+    | boolean
+    | null
+    | { [key: string]: TPrismaJsonValue | null }
+    | (TPrismaJsonValue | null)[];
+
+export interface IPrismaUser {
+    id: number;
+    telegramId: bigint;
+    chatId: string | null;
+    username: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    languageCode: string | null;
+}
+
+export interface IPrismaStepState {
+    id: number;
+    userId: number;
+    chatId: string;
+    slug: string;
+    currentPage: string | null;
+    answers: unknown;
+    history: unknown;
+}
 
 export type TBotPageIdentifier = string;
 
@@ -15,7 +44,11 @@ export interface IBotBuilderContext {
     metadata?: TelegramBot.Metadata;
     session?: IBotSessionState;
     user?: TelegramBot.User;
-    prisma?: unknown;
+    prisma?: PrismaService;
+    db?: {
+        user?: IPrismaUser;
+        stepState?: IPrismaStepState;
+    };
     services: Record<string, unknown>;
 }
 
@@ -153,7 +186,8 @@ export interface IBotBuilderOptions {
     keyboards?: IBotKeyboardConfig[];
     initialPageId?: TBotPageIdentifier;
     sessionStorage?: IBotSessionStorage;
-    prisma?: unknown;
+    prisma?: PrismaService;
+    slug?: string;
     services?: Record<string, unknown>;
     pageMiddlewares?: IBotPageMiddlewareConfig[];
 }

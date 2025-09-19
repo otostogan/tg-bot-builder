@@ -5,6 +5,7 @@ import {
 } from './app.interface';
 import { BOT_BUILDER_MODULE_OPTIONS } from './app.constants';
 import { BuilderService } from './builder/builder.service';
+import { PrismaService } from './prisma/prisma.service';
 
 const BOT_BUILDER_PAGES_REGISTRATION = Symbol('BOT_BUILDER_PAGES_REGISTRATION');
 
@@ -18,8 +19,18 @@ export class BotBuilder {
         return {
             module: BotBuilder,
             imports: options.imports ?? [],
-            providers: [asyncOptions, BuilderService, pagesRegistration],
-            exports: [BotBuilder, BuilderService, BOT_BUILDER_MODULE_OPTIONS],
+            providers: [
+                asyncOptions,
+                PrismaService,
+                BuilderService,
+                pagesRegistration,
+            ],
+            exports: [
+                BotBuilder,
+                BuilderService,
+                PrismaService,
+                BOT_BUILDER_MODULE_OPTIONS,
+            ],
         };
     }
 
@@ -61,6 +72,7 @@ export class BotBuilder {
             keyboards: options.keyboards ?? [],
             services: options.services ?? {},
             pageMiddlewares: options.pageMiddlewares ?? [],
+            slug: options.slug ?? 'default',
         };
     }
 }

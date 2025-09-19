@@ -1,5 +1,6 @@
 export { BotBuilder } from './app.module';
 export { BuilderService } from './builder/builder.service';
+export { PrismaService } from './prisma/prisma.service';
 export {
     IBotBuilderModuleAsyncOptions,
     IBotBuilderOptions,

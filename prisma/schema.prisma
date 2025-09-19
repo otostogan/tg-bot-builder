@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int         @id @default(autoincrement())
+  telegramId   BigInt      @unique
+  chatId       String?
+  username     String?
+  firstName    String?
+  lastName     String?
+  languageCode String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  stepStates   StepState[]
+  formEntries  FormEntry[]
+}
+
+model StepState {
+  id          Int         @id @default(autoincrement())
+  userId      Int
+  chatId      String
+  slug        String
+  currentPage String?
+  answers     Json?
+  history     Json?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  formEntries FormEntry[]
+
+  @@unique([userId, slug])
+}
+
+model FormEntry {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  stepStateId Int
+  slug        String
+  pageId      String
+  payload     Json
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stepState   StepState @relation(fields: [stepStateId], references: [id], onDelete: Cascade)
+
+  @@unique([stepStateId, pageId])
+}
