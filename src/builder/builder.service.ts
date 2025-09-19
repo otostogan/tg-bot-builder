@@ -83,9 +83,13 @@ export class BuilderService {
         this.pageMiddlewaresMap = new Map(
             pageMiddlewares
                 .filter(
-                    (middleware): middleware is IBotPageMiddlewareConfig & {
+                    (
+                        middleware,
+                    ): middleware is IBotPageMiddlewareConfig & {
                         name: string;
-                    } => typeof middleware.name === 'string' && middleware.name.length > 0,
+                    } =>
+                        typeof middleware.name === 'string' &&
+                        middleware.name.length > 0,
                 )
                 .map((middleware) => [middleware.name, middleware]),
         );
@@ -479,9 +483,7 @@ export class BuilderService {
         return { allow: true };
     }
 
-    private resolvePageMiddlewares(
-        page: IBotPage,
-    ): IBotPageMiddlewareConfig[] {
+    private resolvePageMiddlewares(page: IBotPage): IBotPageMiddlewareConfig[] {
         if (!page.middlewares || page.middlewares.length === 0) {
             return [];
         }
@@ -505,9 +507,7 @@ export class BuilderService {
             resolved.push(middleware);
         }
 
-        return resolved.sort(
-            (a, b) => (b.priority ?? 0) - (a.priority ?? 0),
-        );
+        return resolved.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
     }
 
     private normalizePageMiddlewareResult(

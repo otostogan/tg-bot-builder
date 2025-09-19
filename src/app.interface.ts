@@ -72,9 +72,7 @@ export type TBotPageMiddlewareHandlerResult =
 export type TBotPageMiddlewareHandler = (
     context: IBotBuilderContext,
     page: IBotPage,
-) =>
-    | TBotPageMiddlewareHandlerResult
-    | Promise<TBotPageMiddlewareHandlerResult>;
+) => TBotPageMiddlewareHandlerResult | Promise<TBotPageMiddlewareHandlerResult>;
 
 export interface IBotPageMiddlewareConfig {
     name?: string;
