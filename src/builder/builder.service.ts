@@ -118,7 +118,9 @@ export class BuilderService {
 
         for (const page of pages) {
             if (!page || typeof page.id !== 'string' || page.id.length === 0) {
-                this.logger.warn('Attempted to register a page without a valid identifier');
+                this.logger.warn(
+                    'Attempted to register a page without a valid identifier',
+                );
                 continue;
             }
 
