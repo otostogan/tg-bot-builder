@@ -11,6 +11,9 @@
         "start:dev": "nest start --watch",
         "start:debug": "nest start --debug --watch",
         "start:prod": "node dist/main",
+        "prisma:generate": "npx prisma generate",
+        "prisma:push": "npx prisma db push",
+        "prisma:studio": "npx prisma studio",
         "p": "npx prettier . --write"
     },
     "dependencies": {

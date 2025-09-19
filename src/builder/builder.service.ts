@@ -365,7 +365,10 @@ export class BuilderService {
             if (!nextPageId) {
                 session.pageId = undefined;
                 await this.saveSession(chatId, session);
-                await this.updateStepStateCurrentPage(database.stepState, undefined);
+                await this.updateStepStateCurrentPage(
+                    database.stepState,
+                    undefined,
+                );
                 return;
             }
 
@@ -376,7 +379,10 @@ export class BuilderService {
                 );
                 session.pageId = undefined;
                 await this.saveSession(chatId, session);
-                await this.updateStepStateCurrentPage(database.stepState, undefined);
+                await this.updateStepStateCurrentPage(
+                    database.stepState,
+                    undefined,
+                );
                 return;
             }
 
@@ -478,7 +484,10 @@ export class BuilderService {
             session.pageId = undefined;
             await this.saveSession(chatId, session);
             const database = await this.ensureDatabaseState(chatId, session);
-            await this.updateStepStateCurrentPage(database.stepState, undefined);
+            await this.updateStepStateCurrentPage(
+                database.stepState,
+                undefined,
+            );
             return;
         }
 
@@ -687,7 +696,10 @@ export class BuilderService {
                 updates.chatId = chatIdentifier;
             }
 
-            if (targetPageId !== undefined && stepState.currentPage !== targetPageId) {
+            if (
+                targetPageId !== undefined &&
+                stepState.currentPage !== targetPageId
+            ) {
                 updates.currentPage = targetPageId;
             }
 
@@ -729,7 +741,7 @@ export class BuilderService {
             where: { id: stepState.id },
             data: {
                 answers,
-                history,
+                history: JSON.stringify(history),
             },
         })) as unknown as IPrismaStepState;
 
@@ -788,9 +800,7 @@ export class BuilderService {
         };
     }
 
-    private normalizeHistory(
-        history: unknown,
-    ): IStepHistoryEntry[] {
+    private normalizeHistory(history: unknown): IStepHistoryEntry[] {
         if (!Array.isArray(history)) {
             return [];
         }
@@ -842,7 +852,9 @@ export class BuilderService {
         }
 
         if (Array.isArray(value)) {
-            return value.map((item) => this.serializeValue(item)) as TPrismaJsonValue;
+            return value.map((item) =>
+                this.serializeValue(item),
+            ) as TPrismaJsonValue;
         }
 
         if (typeof value === 'object') {

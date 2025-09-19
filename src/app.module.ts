@@ -19,7 +19,12 @@ export class BotBuilder {
         return {
             module: BotBuilder,
             imports: options.imports ?? [],
-            providers: [asyncOptions, PrismaService, BuilderService, pagesRegistration],
+            providers: [
+                asyncOptions,
+                PrismaService,
+                BuilderService,
+                pagesRegistration,
+            ],
             exports: [
                 BotBuilder,
                 BuilderService,
