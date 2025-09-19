@@ -14,6 +14,9 @@ export interface IBotBuilderContext {
     message?: TelegramBot.Message;
     metadata?: TelegramBot.Metadata;
     session?: IBotSessionState;
+    user?: TelegramBot.User;
+    prisma?: unknown;
+    services: Record<string, unknown>;
 }
 
 export interface IBotPageContentPayload {
@@ -53,7 +56,33 @@ export interface IBotPage {
     next?: TBotPageNextResolver;
     validate?: TBotPageValidateFn;
     yup?: AnySchema;
+    middlewares?: TBotPageMiddleware[];
 }
+
+export interface IBotPageMiddlewareResult {
+    allow: boolean;
+    message?: string;
+}
+
+export type TBotPageMiddlewareHandlerResult =
+    | void
+    | boolean
+    | IBotPageMiddlewareResult;
+
+export type TBotPageMiddlewareHandler = (
+    context: IBotBuilderContext,
+    page: IBotPage,
+) =>
+    | TBotPageMiddlewareHandlerResult
+    | Promise<TBotPageMiddlewareHandlerResult>;
+
+export interface IBotPageMiddlewareConfig {
+    name?: string;
+    handler: TBotPageMiddlewareHandler;
+    priority?: number;
+}
+
+export type TBotPageMiddleware = string | IBotPageMiddlewareConfig;
 
 export type TBotKeyboardMarkup =
     | TelegramBot.ReplyKeyboardMarkup
@@ -118,6 +147,9 @@ export interface IBotBuilderOptions {
     keyboards?: IBotKeyboardConfig[];
     initialPageId?: TBotPageIdentifier;
     sessionStorage?: IBotSessionStorage;
+    prisma?: unknown;
+    services?: Record<string, unknown>;
+    pageMiddlewares?: IBotPageMiddlewareConfig[];
 }
 
 export interface IBotBuilderModuleAsyncOptions

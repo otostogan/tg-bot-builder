@@ -9,6 +9,8 @@ export {
     IBotMiddlewareContext,
     IBotPage,
     IBotPageContentPayload,
+    IBotPageMiddlewareConfig,
+    IBotPageMiddlewareResult,
     IBotSessionState,
     IBotSessionStorage,
     TBotKeyboardMarkup,
@@ -21,4 +23,7 @@ export {
     TBotPageNextResolver,
     TBotPageOnValid,
     TBotPageValidateFn,
+    TBotPageMiddleware,
+    TBotPageMiddlewareHandler,
+    TBotPageMiddlewareHandlerResult,
 } from './app.interface';
