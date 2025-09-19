@@ -6,16 +6,19 @@ import {
 import { BOT_BUILDER_MODULE_OPTIONS } from './app.constants';
 import { BuilderService } from './builder/builder.service';
 
+const BOT_BUILDER_PAGES_REGISTRATION = Symbol('BOT_BUILDER_PAGES_REGISTRATION');
+
 @Global()
 @Module({})
 export class BotBuilder {
     static forRootAsync(options: IBotBuilderModuleAsyncOptions): DynamicModule {
         const asyncOptions = this.createAsyncOptionsProvider(options);
+        const pagesRegistration = this.createPagesRegistrationProvider();
 
         return {
             module: BotBuilder,
             imports: options.imports ?? [],
-            providers: [asyncOptions, BuilderService],
+            providers: [asyncOptions, BuilderService, pagesRegistration],
             exports: [BotBuilder, BuilderService, BOT_BUILDER_MODULE_OPTIONS],
         };
     }
@@ -30,6 +33,20 @@ export class BotBuilder {
                 return BotBuilder.normalizeOptions(resolvedOptions);
             },
             inject: options.inject || [],
+        };
+    }
+
+    private static createPagesRegistrationProvider(): Provider {
+        return {
+            provide: BOT_BUILDER_PAGES_REGISTRATION,
+            useFactory: (
+                builderService: BuilderService,
+                options: IBotBuilderOptions,
+            ) => {
+                builderService.registerPages(options.pages ?? []);
+                return true;
+            },
+            inject: [BuilderService, BOT_BUILDER_MODULE_OPTIONS],
         };
     }
 

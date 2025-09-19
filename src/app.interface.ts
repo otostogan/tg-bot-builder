@@ -64,6 +64,14 @@ export interface IBotPageMiddlewareResult {
     message?: string;
 }
 
+export interface IBotPageNavigationOptions {
+    message?: TelegramBot.Message;
+    metadata?: TelegramBot.Metadata;
+    user?: TelegramBot.User;
+    state?: IBotSessionState;
+    resetState?: boolean;
+}
+
 export type TBotPageMiddlewareHandlerResult =
     | void
     | boolean
