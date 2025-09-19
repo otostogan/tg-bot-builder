@@ -11,13 +11,17 @@ import {
     IBotPageMiddlewareResult,
     IBotSessionState,
     IBotSessionStorage,
+    IPrismaStepState,
+    IPrismaUser,
     TBotKeyboardMarkup,
     TBotPageContent,
     TBotPageContentResult,
     TBotPageIdentifier,
     TBotPageMiddlewareHandlerResult,
+    TPrismaJsonValue,
 } from '../app.interface';
 import { PublisherService } from 'otostogan-nest-logger';
+import { PrismaService } from '../prisma/prisma.service';
 import TelegramBot = require('node-telegram-bot-api');
 
 const DEFAULT_PAGE_MIDDLEWARE_REJECTION_MESSAGE =
@@ -35,6 +39,18 @@ interface IBuilderContextOptions {
     message?: TelegramBot.Message;
     metadata?: TelegramBot.Metadata;
     user?: TelegramBot.User;
+    database?: IContextDatabaseState;
+}
+
+interface IContextDatabaseState {
+    user?: IPrismaUser;
+    stepState?: IPrismaStepState;
+}
+
+interface IStepHistoryEntry {
+    pageId: string;
+    value: TPrismaJsonValue | null;
+    timestamp: string;
 }
 
 interface IValidationResult {
@@ -55,13 +71,15 @@ export class BuilderService {
     private initialPageId?: TBotPageIdentifier;
     private readonly sessionStorage: IBotSessionStorage<IChatSessionState>;
     private readonly sessionCache: Map<string, IChatSessionState> = new Map();
-    private readonly prisma?: unknown;
+    private readonly prisma?: PrismaService;
+    private readonly slug: string;
     private readonly helperServices: Record<string, unknown>;
 
     constructor(
         @Inject(BOT_BUILDER_MODULE_OPTIONS)
         private readonly options: IBotBuilderOptions,
         private readonly logger: PublisherService,
+        private readonly prismaService: PrismaService,
     ) {
         this.TG_BOT_TOKEN = options.TG_BOT_TOKEN;
         this.TG_BOT = new TelegramBot(this.TG_BOT_TOKEN, { polling: true });
@@ -96,7 +114,8 @@ export class BuilderService {
                 .map((middleware) => [middleware.name, middleware]),
         );
 
-        this.prisma = options.prisma;
+        this.prisma = options.prisma ?? prismaService;
+        this.slug = options.slug ?? 'default';
         this.helperServices = options.services ?? {};
 
         const providedSessionStorage = options.sessionStorage as unknown as
@@ -182,12 +201,20 @@ export class BuilderService {
         session.pageId = page.id;
         await this.saveSession(chatId, session);
 
+        const database = await this.ensureDatabaseState(
+            chatId,
+            session,
+            options?.message,
+            page.id,
+        );
+
         const context = this.createContext({
             chatId,
             session,
             message: options?.message,
             metadata: options?.metadata,
             user: options?.user,
+            database,
         });
 
         await this.renderPage(page, context);
@@ -231,11 +258,19 @@ export class BuilderService {
             if (message.from) {
                 session.user = message.from;
             }
-            const context = this.createContext({
+            let database = await this.ensureDatabaseState(
+                chatId,
+                session,
+                message,
+                session.pageId,
+            );
+
+            let context = this.createContext({
                 chatId,
                 session,
                 message,
                 metadata,
+                database,
             });
 
             if (!session.pageId) {
@@ -248,13 +283,20 @@ export class BuilderService {
                 session.pageId = initialPage.id;
                 session.data = session.data ?? {};
                 await this.saveSession(chatId, session);
-                await this.renderPage(
-                    initialPage,
-                    this.createContext({
-                        chatId,
-                        session,
-                    }),
+                database = await this.ensureDatabaseState(
+                    chatId,
+                    session,
+                    message,
+                    session.pageId,
                 );
+                context = this.createContext({
+                    chatId,
+                    session,
+                    message,
+                    metadata,
+                    database,
+                });
+                await this.renderPage(initialPage, context);
                 return;
             }
 
@@ -281,25 +323,49 @@ export class BuilderService {
                 await this.TG_BOT.sendMessage(chatId, errorMessage);
                 await this.renderPage(
                     currentPage,
-                    this.createContext({ chatId, session }),
+                    this.createContext({ chatId, session, database }),
                 );
                 return;
             }
 
             session.data[currentPage.id] = value;
 
+            const updatedStepState = await this.persistStepProgress(
+                database.stepState,
+                currentPage.id,
+                value,
+            );
+            if (updatedStepState) {
+                database.stepState = updatedStepState;
+            }
+
             if (currentPage.onValid) {
-                await currentPage.onValid(context);
+                await currentPage.onValid(
+                    this.createContext({
+                        chatId,
+                        session,
+                        message,
+                        metadata,
+                        database,
+                    }),
+                );
             }
 
             const nextPageId = await this.resolveNextPageId(
                 currentPage,
-                context,
+                this.createContext({
+                    chatId,
+                    session,
+                    message,
+                    metadata,
+                    database,
+                }),
             );
 
             if (!nextPageId) {
                 session.pageId = undefined;
                 await this.saveSession(chatId, session);
+                await this.updateStepStateCurrentPage(database.stepState, undefined);
                 return;
             }
 
@@ -310,15 +376,24 @@ export class BuilderService {
                 );
                 session.pageId = undefined;
                 await this.saveSession(chatId, session);
+                await this.updateStepStateCurrentPage(database.stepState, undefined);
                 return;
             }
 
             session.pageId = nextPage.id;
             await this.saveSession(chatId, session);
 
+            const nextStepState = await this.updateStepStateCurrentPage(
+                database.stepState,
+                nextPage.id,
+            );
+            if (nextStepState) {
+                database.stepState = nextStepState;
+            }
+
             await this.renderPage(
                 nextPage,
-                this.createContext({ chatId, session }),
+                this.createContext({ chatId, session, database }),
             );
         } catch (error) {
             const message =
@@ -402,14 +477,24 @@ export class BuilderService {
         if (!initialPage) {
             session.pageId = undefined;
             await this.saveSession(chatId, session);
+            const database = await this.ensureDatabaseState(chatId, session);
+            await this.updateStepStateCurrentPage(database.stepState, undefined);
             return;
         }
 
         session.pageId = initialPage.id;
         await this.saveSession(chatId, session);
+
+        const database = await this.ensureDatabaseState(
+            chatId,
+            session,
+            undefined,
+            initialPage.id,
+        );
+
         await this.renderPage(
             initialPage,
-            this.createContext({ chatId, session }),
+            this.createContext({ chatId, session, database }),
         );
     }
 
@@ -440,6 +525,7 @@ export class BuilderService {
             session: options.session.data,
             user,
             prisma: this.prisma,
+            db: options.database,
             services: this.helperServices,
         };
     }
@@ -533,6 +619,250 @@ export class BuilderService {
         }
 
         return undefined;
+    }
+
+    private async ensureDatabaseState(
+        chatId: TelegramBot.ChatId,
+        session: IChatSessionState,
+        message?: TelegramBot.Message,
+        currentPageId?: string,
+    ): Promise<IContextDatabaseState> {
+        if (!this.prisma) {
+            return {};
+        }
+
+        const telegramUser = message?.from ?? session.user;
+        if (!telegramUser) {
+            return {};
+        }
+
+        const telegramId = this.normalizeTelegramId(telegramUser.id);
+        const chatIdentifier = this.normalizeChatId(chatId);
+
+        const user = (await this.prisma.user.upsert({
+            where: { telegramId },
+            update: {
+                chatId: chatIdentifier,
+                username: telegramUser.username ?? undefined,
+                firstName: telegramUser.first_name ?? undefined,
+                lastName: telegramUser.last_name ?? undefined,
+                languageCode: telegramUser.language_code ?? undefined,
+            },
+            create: {
+                telegramId,
+                chatId: chatIdentifier,
+                username: telegramUser.username,
+                firstName: telegramUser.first_name,
+                lastName: telegramUser.last_name,
+                languageCode: telegramUser.language_code,
+            },
+        })) as unknown as IPrismaUser;
+
+        const targetPageId = currentPageId ?? session.pageId;
+
+        let stepState = (await this.prisma.stepState.findUnique({
+            where: {
+                userId_slug: {
+                    userId: user.id,
+                    slug: this.slug,
+                },
+            },
+        })) as unknown as IPrismaStepState | null;
+
+        if (!stepState) {
+            stepState = (await this.prisma.stepState.create({
+                data: {
+                    userId: user.id,
+                    chatId: chatIdentifier,
+                    slug: this.slug,
+                    currentPage: targetPageId ?? null,
+                    answers: this.serializeValue(session.data ?? {}),
+                    history: this.serializeValue([]),
+                },
+            })) as unknown as IPrismaStepState;
+        } else {
+            const updates: Record<string, unknown> = {};
+
+            if (stepState.chatId !== chatIdentifier) {
+                updates.chatId = chatIdentifier;
+            }
+
+            if (targetPageId !== undefined && stepState.currentPage !== targetPageId) {
+                updates.currentPage = targetPageId;
+            }
+
+            if (Object.keys(updates).length > 0) {
+                stepState = (await this.prisma.stepState.update({
+                    where: { id: stepState.id },
+                    data: updates,
+                })) as unknown as IPrismaStepState;
+            }
+        }
+
+        return {
+            user,
+            stepState,
+        };
+    }
+
+    private async persistStepProgress(
+        stepState: IPrismaStepState | undefined,
+        pageId: string,
+        value: unknown,
+    ): Promise<IPrismaStepState | undefined> {
+        if (!this.prisma || !stepState) {
+            return stepState;
+        }
+
+        const serializedValue = this.serializeValue(value);
+        const answers = this.normalizeAnswers(stepState.answers);
+        answers[pageId] = serializedValue;
+
+        const history = this.normalizeHistory(stepState.history);
+        history.push({
+            pageId,
+            value: serializedValue,
+            timestamp: new Date().toISOString(),
+        });
+
+        const updatedStepState = (await this.prisma.stepState.update({
+            where: { id: stepState.id },
+            data: {
+                answers,
+                history,
+            },
+        })) as unknown as IPrismaStepState;
+
+        await this.prisma.formEntry.upsert({
+            where: {
+                stepStateId_pageId: {
+                    stepStateId: updatedStepState.id,
+                    pageId,
+                },
+            },
+            update: {
+                payload: serializedValue,
+            },
+            create: {
+                userId: updatedStepState.userId,
+                stepStateId: updatedStepState.id,
+                slug: updatedStepState.slug,
+                pageId,
+                payload: serializedValue,
+            },
+        });
+
+        return updatedStepState;
+    }
+
+    private async updateStepStateCurrentPage(
+        stepState: IPrismaStepState | undefined,
+        pageId: string | undefined,
+    ): Promise<IPrismaStepState | undefined> {
+        if (!this.prisma || !stepState) {
+            return stepState;
+        }
+
+        const targetPage = pageId ?? null;
+        if (stepState.currentPage === targetPage) {
+            return stepState;
+        }
+
+        return (await this.prisma.stepState.update({
+            where: { id: stepState.id },
+            data: {
+                currentPage: targetPage,
+            },
+        })) as unknown as IPrismaStepState;
+    }
+
+    private normalizeAnswers(
+        answers: unknown,
+    ): Record<string, TPrismaJsonValue | null> {
+        if (!answers || typeof answers !== 'object' || Array.isArray(answers)) {
+            return {};
+        }
+
+        return {
+            ...(answers as Record<string, TPrismaJsonValue | null>),
+        };
+    }
+
+    private normalizeHistory(
+        history: unknown,
+    ): IStepHistoryEntry[] {
+        if (!Array.isArray(history)) {
+            return [];
+        }
+
+        return history
+            .map((entry) =>
+                typeof entry === 'object' && entry !== null
+                    ? (entry as Record<string, unknown>)
+                    : undefined,
+            )
+            .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+            .map((entry) => {
+                const pageIdValue = entry.pageId;
+                const timestampValue = entry.timestamp;
+
+                const pageId =
+                    typeof pageIdValue === 'string'
+                        ? pageIdValue
+                        : String(pageIdValue ?? '');
+                const timestamp =
+                    typeof timestampValue === 'string'
+                        ? timestampValue
+                        : new Date().toISOString();
+
+                return {
+                    pageId,
+                    timestamp,
+                    value: this.serializeValue(entry.value),
+                };
+            });
+    }
+
+    private serializeValue(value: unknown): TPrismaJsonValue | null {
+        if (value === undefined) {
+            return null;
+        }
+
+        if (
+            value === null ||
+            typeof value === 'string' ||
+            typeof value === 'number' ||
+            typeof value === 'boolean'
+        ) {
+            return value as TPrismaJsonValue;
+        }
+
+        if (typeof value === 'bigint') {
+            return value.toString();
+        }
+
+        if (Array.isArray(value)) {
+            return value.map((item) => this.serializeValue(item)) as TPrismaJsonValue;
+        }
+
+        if (typeof value === 'object') {
+            const entries = Object.entries(value as Record<string, unknown>);
+            const normalized: Record<string, TPrismaJsonValue | null> = {};
+            for (const [key, item] of entries) {
+                normalized[key] = this.serializeValue(item);
+            }
+            return normalized as TPrismaJsonValue;
+        }
+
+        return null;
+    }
+
+    private normalizeChatId(chatId: TelegramBot.ChatId): string {
+        return typeof chatId === 'string' ? chatId : chatId.toString();
+    }
+
+    private normalizeTelegramId(id: number | string): bigint {
+        return typeof id === 'string' ? BigInt(id) : BigInt(id);
     }
 
     private async renderPage(
