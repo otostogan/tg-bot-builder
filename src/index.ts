@@ -1,4 +1,5 @@
 export { BotBuilder } from './app.module';
+export { BuilderService } from './builder/builder.service';
 export {
     IBotBuilderModuleAsyncOptions,
     IBotBuilderOptions,
@@ -11,6 +12,7 @@ export {
     IBotPageContentPayload,
     IBotPageMiddlewareConfig,
     IBotPageMiddlewareResult,
+    IBotPageNavigationOptions,
     IBotSessionState,
     IBotSessionStorage,
     TBotKeyboardMarkup,

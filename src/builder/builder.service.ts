@@ -5,6 +5,7 @@ import {
     IBotBuilderContext,
     IBotBuilderOptions,
     IBotKeyboardConfig,
+    IBotPageNavigationOptions,
     IBotPageMiddlewareConfig,
     IBotPage,
     IBotPageMiddlewareResult,
@@ -51,7 +52,7 @@ export class BuilderService {
     private readonly keyboardsMap: Map<string, IBotKeyboardConfig>;
     private readonly persistentKeyboards: IBotKeyboardConfig[];
     private readonly pageMiddlewaresMap: Map<string, IBotPageMiddlewareConfig>;
-    private readonly initialPageId?: TBotPageIdentifier;
+    private initialPageId?: TBotPageIdentifier;
     private readonly sessionStorage: IBotSessionStorage<IChatSessionState>;
     private readonly sessionCache: Map<string, IChatSessionState> = new Map();
     private readonly prisma?: unknown;
@@ -65,9 +66,10 @@ export class BuilderService {
         this.TG_BOT_TOKEN = options.TG_BOT_TOKEN;
         this.TG_BOT = new TelegramBot(this.TG_BOT_TOKEN, { polling: true });
 
-        this.pages = options.pages ?? [];
-        this.pagesMap = new Map(this.pages.map((page) => [page.id, page]));
-        this.initialPageId = options.initialPageId ?? this.pages[0]?.id;
+        this.pages = [];
+        this.pagesMap = new Map();
+        this.initialPageId = options.initialPageId;
+        this.registerPages(options.pages ?? []);
 
         const keyboards = options.keyboards ?? [];
         this.keyboardsMap = new Map(
@@ -107,6 +109,110 @@ export class BuilderService {
         this.logger.info('BotBuilder initialized');
 
         this.registerHandlers();
+    }
+
+    public registerPages(pages: IBotPage[]): void {
+        if (!Array.isArray(pages) || pages.length === 0) {
+            return;
+        }
+
+        for (const page of pages) {
+            if (!page || typeof page.id !== 'string' || page.id.length === 0) {
+                this.logger.warn('Attempted to register a page without a valid identifier');
+                continue;
+            }
+
+            const existingIndex = this.pages.findIndex(
+                (registeredPage) => registeredPage.id === page.id,
+            );
+
+            if (existingIndex >= 0) {
+                this.pages[existingIndex] = page;
+            } else {
+                this.pages.push(page);
+            }
+
+            this.pagesMap.set(page.id, page);
+        }
+
+        if (!this.initialPageId && this.pages.length > 0) {
+            this.initialPageId = this.pages[0].id;
+        }
+
+        if (this.initialPageId && !this.pagesMap.has(this.initialPageId)) {
+            this.logger.warn(
+                `Initial page with id "${this.initialPageId}" not found among registered pages`,
+            );
+        }
+    }
+
+    public async goToPage(
+        chatId: TelegramBot.ChatId,
+        pageId: TBotPageIdentifier,
+        options?: IBotPageNavigationOptions,
+    ): Promise<void> {
+        const page = this.pagesMap.get(pageId);
+        if (!page) {
+            this.logger.warn(
+                `Page with id "${pageId}" not found for chat ${chatId}`,
+            );
+            return;
+        }
+
+        const session = await this.getSession(chatId);
+
+        if (options?.resetState) {
+            session.data = {};
+        }
+
+        if (options?.state) {
+            session.data = options.state;
+        }
+
+        session.data = session.data ?? {};
+
+        if (options?.user) {
+            session.user = options.user;
+        } else if (options?.message?.from) {
+            session.user = options.message.from;
+        }
+
+        session.pageId = page.id;
+        await this.saveSession(chatId, session);
+
+        const context = this.createContext({
+            chatId,
+            session,
+            message: options?.message,
+            metadata: options?.metadata,
+            user: options?.user,
+        });
+
+        await this.renderPage(page, context);
+    }
+
+    public async goToInitialPage(
+        chatId: TelegramBot.ChatId,
+        options?: IBotPageNavigationOptions,
+    ): Promise<void> {
+        const initialPage = this.resolveInitialPage();
+        if (!initialPage) {
+            this.logger.warn('No initial page configured');
+            return;
+        }
+
+        const navigationOptions: IBotPageNavigationOptions = {
+            ...options,
+        };
+
+        if (
+            navigationOptions.resetState === undefined &&
+            navigationOptions.state === undefined
+        ) {
+            navigationOptions.resetState = true;
+        }
+
+        await this.goToPage(chatId, initialPage.id, navigationOptions);
     }
 
     private registerHandlers(): void {
@@ -306,11 +412,18 @@ export class BuilderService {
     }
 
     private resolveInitialPage(): IBotPage | undefined {
-        if (!this.initialPageId) {
-            return undefined;
+        if (this.initialPageId) {
+            const initialPage = this.pagesMap.get(this.initialPageId);
+            if (initialPage) {
+                return initialPage;
+            }
+
+            this.logger.warn(
+                `Initial page with id "${this.initialPageId}" not found among registered pages`,
+            );
         }
 
-        return this.pagesMap.get(this.initialPageId);
+        return this.pages[0];
     }
 
     private createContext(options: IBuilderContextOptions): IBotBuilderContext {
