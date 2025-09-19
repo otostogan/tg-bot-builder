@@ -1,2 +1,24 @@
 export { BotBuilder } from './app.module';
-export { IBotBuilderModuleAsyncOptions } from './app.interface';
+export {
+    IBotBuilderModuleAsyncOptions,
+    IBotBuilderOptions,
+    IBotBuilderContext,
+    IBotHandler,
+    IBotKeyboardConfig,
+    IBotMiddlewareConfig,
+    IBotMiddlewareContext,
+    IBotPage,
+    IBotPageContentPayload,
+    IBotSessionState,
+    IBotSessionStorage,
+    TBotKeyboardMarkup,
+    TBotKeyboardResolver,
+    TBotMiddlewareHandler,
+    TBotMiddlewareNext,
+    TBotPageContent,
+    TBotPageContentResult,
+    TBotPageIdentifier,
+    TBotPageNextResolver,
+    TBotPageOnValid,
+    TBotPageValidateFn,
+} from './app.interface';
