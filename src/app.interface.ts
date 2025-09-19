@@ -38,6 +38,7 @@ export interface IBotSessionState {
 }
 
 export interface IBotBuilderContext {
+    botId: string;
     bot: TelegramBot;
     chatId: TelegramBot.ChatId;
     message?: TelegramBot.Message;
@@ -180,6 +181,7 @@ export interface IBotSessionStorage<TState = IBotSessionState> {
 
 export interface IBotBuilderOptions {
     TG_BOT_TOKEN: string;
+    id?: string;
     pages?: IBotPage[];
     handlers?: IBotHandler[];
     middlewares?: IBotMiddlewareConfig[];
@@ -196,6 +198,9 @@ export interface IBotBuilderModuleAsyncOptions
     extends Pick<ModuleMetadata, 'imports'> {
     useFactory: (
         ...args: any[]
-    ) => Promise<IBotBuilderOptions> | IBotBuilderOptions;
+    ) =>
+        | Promise<IBotBuilderOptions | IBotBuilderOptions[]>
+        | IBotBuilderOptions
+        | IBotBuilderOptions[];
     inject?: any[];
 }
