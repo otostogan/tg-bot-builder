@@ -26,6 +26,46 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+### Registering multiple bots
+
+`BotBuilder` can manage several Telegram bots in a single NestJS application. Register your primary configuration with `forRootAsync`, and then call `forFeature` to attach additional bots. Each bot receives its own session store, pages and Telegram client instance.
+
+```ts
+import { Module } from '@nestjs/common';
+import { BotBuilder } from 'tg-bot-builder';
+
+@Module({
+    imports: [
+        BotBuilder.forRootAsync({
+            useFactory: () => ({
+                id: 'primary',
+                TG_BOT_TOKEN: process.env.PRIMARY_TOKEN!,
+                pages: [
+                    { id: 'start', content: 'Primary bot ready' },
+                ],
+            }),
+        }),
+        BotBuilder.forFeature([
+            {
+                id: 'secondary',
+                TG_BOT_TOKEN: process.env.SECONDARY_TOKEN!,
+                pages: [
+                    { id: 'start', content: 'Secondary bot ready' },
+                ],
+            },
+        ]),
+    ],
+})
+export class BotsModule {}
+```
+
+Interactions routed through `BuilderService` now require the bot identifier:
+
+```ts
+await builderService.goToInitialPage('primary', chatId);
+await builderService.goToPage('secondary', chatId, 'start');
+```
+
 ## Project setup
 
 ```bash

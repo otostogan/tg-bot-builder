@@ -1,4 +1,4 @@
-import { DynamicModule, Global, Module, Provider } from '@nestjs/common';
+import { DynamicModule, Module, Provider } from '@nestjs/common';
 import {
     IBotBuilderModuleAsyncOptions,
     IBotBuilderOptions,
@@ -6,15 +6,15 @@ import {
 import { BOT_BUILDER_MODULE_OPTIONS } from './app.constants';
 import { BuilderService } from './builder/builder.service';
 import { PrismaService } from './prisma/prisma.service';
+import { IBotRuntimeOptions, normalizeBotOptions } from './builder/bot-runtime';
 
-const BOT_BUILDER_PAGES_REGISTRATION = Symbol('BOT_BUILDER_PAGES_REGISTRATION');
+const BOT_BUILDER_BOTS_REGISTRATION = Symbol('BOT_BUILDER_BOTS_REGISTRATION');
 
-@Global()
 @Module({})
 export class BotBuilder {
     static forRootAsync(options: IBotBuilderModuleAsyncOptions): DynamicModule {
         const asyncOptions = this.createAsyncOptionsProvider(options);
-        const pagesRegistration = this.createPagesRegistrationProvider();
+        const botsRegistration = this.createBotsRegistrationProvider();
 
         return {
             module: BotBuilder,
@@ -23,7 +23,7 @@ export class BotBuilder {
                 asyncOptions,
                 PrismaService,
                 BuilderService,
-                pagesRegistration,
+                botsRegistration,
             ],
             exports: [
                 BotBuilder,
@@ -31,6 +31,27 @@ export class BotBuilder {
                 PrismaService,
                 BOT_BUILDER_MODULE_OPTIONS,
             ],
+        };
+    }
+
+    static forFeature(
+        options: IBotBuilderOptions | IBotBuilderOptions[],
+    ): DynamicModule {
+        const normalized = this.normalizeOptions(options);
+        const featureToken = Symbol('BOT_BUILDER_FEATURE_REGISTRATION');
+        const featureRegistration: Provider = {
+            provide: featureToken,
+            useFactory: (builderService: BuilderService) => {
+                builderService.registerBots(normalized);
+                return true;
+            },
+            inject: [BuilderService],
+        };
+
+        return {
+            module: BotBuilder,
+            providers: [featureRegistration],
+            exports: [BuilderService],
         };
     }
 
@@ -47,14 +68,14 @@ export class BotBuilder {
         };
     }
 
-    private static createPagesRegistrationProvider(): Provider {
+    private static createBotsRegistrationProvider(): Provider {
         return {
-            provide: BOT_BUILDER_PAGES_REGISTRATION,
+            provide: BOT_BUILDER_BOTS_REGISTRATION,
             useFactory: (
                 builderService: BuilderService,
-                options: IBotBuilderOptions,
+                options: IBotRuntimeOptions[],
             ) => {
-                builderService.registerPages(options.pages ?? []);
+                builderService.registerBots(options);
                 return true;
             },
             inject: [BuilderService, BOT_BUILDER_MODULE_OPTIONS],
@@ -62,17 +83,13 @@ export class BotBuilder {
     }
 
     private static normalizeOptions(
-        options: IBotBuilderOptions,
-    ): IBotBuilderOptions {
-        return {
-            ...options,
-            pages: options.pages ?? [],
-            handlers: options.handlers ?? [],
-            middlewares: options.middlewares ?? [],
-            keyboards: options.keyboards ?? [],
-            services: options.services ?? {},
-            pageMiddlewares: options.pageMiddlewares ?? [],
-            slug: options.slug ?? 'default',
-        };
+        options:
+            | IBotBuilderOptions
+            | IBotBuilderOptions[]
+            | IBotRuntimeOptions
+            | IBotRuntimeOptions[],
+    ): IBotRuntimeOptions[] {
+        const list = Array.isArray(options) ? options : [options];
+        return list.map((option, index) => normalizeBotOptions(option, index));
     }
 }
