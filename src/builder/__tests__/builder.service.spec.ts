@@ -70,8 +70,12 @@ describe('BuilderService multi-bot support', () => {
         expect(telegramBotMock).toHaveBeenCalledTimes(2);
         expect(telegramBotMock.mock.instances).toHaveLength(2);
 
-        const alphaInstance = service.getBot('alpha') as unknown as TelegramBotMockInstance;
-        const betaInstance = service.getBot('beta') as unknown as TelegramBotMockInstance;
+        const alphaInstance = service.getBot(
+            'alpha',
+        ) as unknown as TelegramBotMockInstance;
+        const betaInstance = service.getBot(
+            'beta',
+        ) as unknown as TelegramBotMockInstance;
 
         expect(alphaInstance).toBeDefined();
         expect(betaInstance).toBeDefined();

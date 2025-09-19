@@ -33,10 +33,7 @@ export class BuilderService {
         return list.map((option, index) => this.registerBot(option, index));
     }
 
-    public registerBot(
-        options: IBotBuilderOptions,
-        index?: number,
-    ): string {
+    public registerBot(options: IBotBuilderOptions, index?: number): string {
         const normalized = normalizeBotOptions(options, index);
         return this.registerNormalizedBot(normalized);
     }
@@ -60,7 +57,11 @@ export class BuilderService {
             this.removeBot(existingByToken);
         }
 
-        const runtime = new BotRuntime(options, this.logger, this.prismaService);
+        const runtime = new BotRuntime(
+            options,
+            this.logger,
+            this.prismaService,
+        );
         this.bots.set(botId, runtime);
         this.botInstances.set(botId, runtime.bot);
         this.botOptions.set(botId, options);
