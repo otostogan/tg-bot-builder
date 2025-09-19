@@ -1,5 +1,8 @@
 import { DynamicModule, Global, Module, Provider } from '@nestjs/common';
-import { IBotBuilderModuleAsyncOptions, IBotBuilderOptions } from './app.interface';
+import {
+    IBotBuilderModuleAsyncOptions,
+    IBotBuilderOptions,
+} from './app.interface';
 import { BOT_BUILDER_MODULE_OPTIONS } from './app.constants';
 import { BuilderService } from './builder/builder.service';
 
@@ -24,14 +27,15 @@ export class BotBuilder {
             provide: BOT_BUILDER_MODULE_OPTIONS,
             useFactory: async (...args: any[]) => {
                 const resolvedOptions = await options.useFactory(...args);
-
                 return BotBuilder.normalizeOptions(resolvedOptions);
             },
             inject: options.inject || [],
         };
     }
 
-    private static normalizeOptions(options: IBotBuilderOptions): IBotBuilderOptions {
+    private static normalizeOptions(
+        options: IBotBuilderOptions,
+    ): IBotBuilderOptions {
         return {
             ...options,
             pages: options.pages ?? [],

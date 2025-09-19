@@ -25,11 +25,13 @@ export type TBotPageContentResult = string | IBotPageContentPayload;
 
 export type TBotPageContent =
     | TBotPageContentResult
-    | ((context: IBotBuilderContext) =>
-          | TBotPageContentResult
-          | Promise<TBotPageContentResult>);
+    | ((
+          context: IBotBuilderContext,
+      ) => TBotPageContentResult | Promise<TBotPageContentResult>);
 
-export type TBotPageOnValid = (context: IBotBuilderContext) => void | Promise<void>;
+export type TBotPageOnValid = (
+    context: IBotBuilderContext,
+) => void | Promise<void>;
 
 export type TBotPageNextResolver = (
     context: IBotBuilderContext,
@@ -92,7 +94,8 @@ export interface IBotMiddlewareConfig {
 }
 
 export interface IBotHandler<
-    TEvent extends keyof TelegramBot.TelegramEvents = keyof TelegramBot.TelegramEvents,
+    TEvent extends
+        keyof TelegramBot.TelegramEvents = keyof TelegramBot.TelegramEvents,
 > {
     event: TEvent;
     listener: TelegramBot.TelegramEvents[TEvent];
