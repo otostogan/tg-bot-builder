@@ -5,20 +5,27 @@ import {
     IBotBuilderContext,
     IBotBuilderOptions,
     IBotKeyboardConfig,
+    IBotPageMiddlewareConfig,
     IBotPage,
+    IBotPageMiddlewareResult,
     IBotSessionState,
     IBotSessionStorage,
     TBotKeyboardMarkup,
     TBotPageContent,
     TBotPageContentResult,
     TBotPageIdentifier,
+    TBotPageMiddlewareHandlerResult,
 } from '../app.interface';
 import { PublisherService } from 'otostogan-nest-logger';
 import TelegramBot = require('node-telegram-bot-api');
 
+const DEFAULT_PAGE_MIDDLEWARE_REJECTION_MESSAGE =
+    'Доступ к этой странице запрещён.';
+
 interface IChatSessionState {
     pageId?: TBotPageIdentifier;
     data: IBotSessionState;
+    user?: TelegramBot.User;
 }
 
 interface IBuilderContextOptions {
@@ -26,6 +33,7 @@ interface IBuilderContextOptions {
     session: IChatSessionState;
     message?: TelegramBot.Message;
     metadata?: TelegramBot.Metadata;
+    user?: TelegramBot.User;
 }
 
 interface IValidationResult {
@@ -42,9 +50,12 @@ export class BuilderService {
     private readonly pagesMap: Map<TBotPageIdentifier, IBotPage>;
     private readonly keyboardsMap: Map<string, IBotKeyboardConfig>;
     private readonly persistentKeyboards: IBotKeyboardConfig[];
+    private readonly pageMiddlewaresMap: Map<string, IBotPageMiddlewareConfig>;
     private readonly initialPageId?: TBotPageIdentifier;
     private readonly sessionStorage: IBotSessionStorage<IChatSessionState>;
     private readonly sessionCache: Map<string, IChatSessionState> = new Map();
+    private readonly prisma?: unknown;
+    private readonly helperServices: Record<string, unknown>;
 
     constructor(
         @Inject(BOT_BUILDER_MODULE_OPTIONS)
@@ -67,6 +78,24 @@ export class BuilderService {
         this.persistentKeyboards = keyboards.filter(
             (keyboard) => keyboard.persistent,
         );
+
+        const pageMiddlewares = options.pageMiddlewares ?? [];
+        this.pageMiddlewaresMap = new Map(
+            pageMiddlewares
+                .filter(
+                    (
+                        middleware,
+                    ): middleware is IBotPageMiddlewareConfig & {
+                        name: string;
+                    } =>
+                        typeof middleware.name === 'string' &&
+                        middleware.name.length > 0,
+                )
+                .map((middleware) => [middleware.name, middleware]),
+        );
+
+        this.prisma = options.prisma;
+        this.helperServices = options.services ?? {};
 
         const providedSessionStorage = options.sessionStorage as unknown as
             | IBotSessionStorage<IChatSessionState>
@@ -91,6 +120,9 @@ export class BuilderService {
         try {
             const chatId = message.chat.id;
             const session = await this.getSession(chatId);
+            if (message.from) {
+                session.user = message.from;
+            }
             const context = this.createContext({
                 chatId,
                 session,
@@ -282,12 +314,18 @@ export class BuilderService {
     }
 
     private createContext(options: IBuilderContextOptions): IBotBuilderContext {
+        const user =
+            options.user ?? options.message?.from ?? options.session.user;
+
         return {
             bot: this.TG_BOT,
             chatId: options.chatId,
             message: options.message,
             metadata: options.metadata,
             session: options.session.data,
+            user,
+            prisma: this.prisma,
+            services: this.helperServices,
         };
     }
 
@@ -386,6 +424,24 @@ export class BuilderService {
         page: IBotPage,
         context: IBotBuilderContext,
     ): Promise<void> {
+        const middlewareResult = await this.executePageMiddlewares(
+            page,
+            context,
+        );
+
+        if (!middlewareResult.allow) {
+            const message =
+                middlewareResult.message ??
+                DEFAULT_PAGE_MIDDLEWARE_REJECTION_MESSAGE;
+
+            this.logger.warn(
+                `Page middlewares prevented rendering of "${page.id}" for chat ${context.chatId}`,
+            );
+
+            await this.TG_BOT.sendMessage(context.chatId, message);
+            return;
+        }
+
         const payload = await this.resolvePageContent(page.content, context);
         const keyboard = await this.resolveKeyboard(page.id, context);
 
@@ -398,6 +454,80 @@ export class BuilderService {
         }
 
         await this.TG_BOT.sendMessage(context.chatId, payload.text, options);
+    }
+
+    private async executePageMiddlewares(
+        page: IBotPage,
+        context: IBotBuilderContext,
+    ): Promise<IBotPageMiddlewareResult> {
+        const middlewares = this.resolvePageMiddlewares(page);
+        if (middlewares.length === 0) {
+            return { allow: true };
+        }
+
+        for (const middleware of middlewares) {
+            try {
+                const result = await middleware.handler(context, page);
+                const normalized = this.normalizePageMiddlewareResult(result);
+
+                if (!normalized.allow) {
+                    return normalized;
+                }
+            } catch (error) {
+                const message =
+                    error instanceof Error ? error.message : undefined;
+                return { allow: false, message };
+            }
+        }
+
+        return { allow: true };
+    }
+
+    private resolvePageMiddlewares(page: IBotPage): IBotPageMiddlewareConfig[] {
+        if (!page.middlewares || page.middlewares.length === 0) {
+            return [];
+        }
+
+        const resolved: IBotPageMiddlewareConfig[] = [];
+
+        for (const middleware of page.middlewares) {
+            if (typeof middleware === 'string') {
+                const registered = this.pageMiddlewaresMap.get(middleware);
+                if (!registered) {
+                    this.logger.warn(
+                        `Page middleware "${middleware}" not found for page "${page.id}"`,
+                    );
+                    continue;
+                }
+
+                resolved.push(registered);
+                continue;
+            }
+
+            resolved.push(middleware);
+        }
+
+        return resolved.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+    }
+
+    private normalizePageMiddlewareResult(
+        result: TBotPageMiddlewareHandlerResult,
+    ): IBotPageMiddlewareResult {
+        if (typeof result === 'boolean') {
+            return { allow: result };
+        }
+
+        if (result && typeof result === 'object' && 'allow' in result) {
+            return {
+                allow: Boolean(result.allow),
+                message:
+                    typeof result.message === 'string'
+                        ? result.message
+                        : undefined,
+            };
+        }
+
+        return { allow: true };
     }
 
     private async resolvePageContent(

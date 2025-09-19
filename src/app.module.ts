@@ -42,6 +42,8 @@ export class BotBuilder {
             handlers: options.handlers ?? [],
             middlewares: options.middlewares ?? [],
             keyboards: options.keyboards ?? [],
+            services: options.services ?? {},
+            pageMiddlewares: options.pageMiddlewares ?? [],
         };
     }
 }
