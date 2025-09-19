@@ -47,16 +47,15 @@ export class BuilderService {
     private readonly sessionCache: Map<string, IChatSessionState> = new Map();
 
     constructor(
-        @Inject(BOT_BUILDER_MODULE_OPTIONS) private readonly options: IBotBuilderOptions,
+        @Inject(BOT_BUILDER_MODULE_OPTIONS)
+        private readonly options: IBotBuilderOptions,
         private readonly logger: PublisherService,
     ) {
         this.TG_BOT_TOKEN = options.TG_BOT_TOKEN;
         this.TG_BOT = new TelegramBot(this.TG_BOT_TOKEN, { polling: true });
 
         this.pages = options.pages ?? [];
-        this.pagesMap = new Map(
-            this.pages.map((page) => [page.id, page]),
-        );
+        this.pagesMap = new Map(this.pages.map((page) => [page.id, page]));
         this.initialPageId = options.initialPageId ?? this.pages[0]?.id;
 
         const keyboards = options.keyboards ?? [];
@@ -69,10 +68,9 @@ export class BuilderService {
             (keyboard) => keyboard.persistent,
         );
 
-        const providedSessionStorage =
-            options.sessionStorage as unknown as
-                | IBotSessionStorage<IChatSessionState>
-                | undefined;
+        const providedSessionStorage = options.sessionStorage as unknown as
+            | IBotSessionStorage<IChatSessionState>
+            | undefined;
 
         this.sessionStorage =
             providedSessionStorage ?? this.createDefaultSessionStorage();
@@ -110,10 +108,13 @@ export class BuilderService {
                 session.pageId = initialPage.id;
                 session.data = session.data ?? {};
                 await this.saveSession(chatId, session);
-                await this.renderPage(initialPage, this.createContext({
-                    chatId,
-                    session,
-                }));
+                await this.renderPage(
+                    initialPage,
+                    this.createContext({
+                        chatId,
+                        session,
+                    }),
+                );
                 return;
             }
 
@@ -197,7 +198,7 @@ export class BuilderService {
             return cached;
         }
 
-        const stored = await Promise.resolve(this.sessionStorage.get(chatId));
+        const stored = await this.sessionStorage.get(chatId);
         const session = this.normalizeSessionState(stored) ?? {
             pageId: undefined,
             data: {},
@@ -239,7 +240,9 @@ export class BuilderService {
     }
 
     private isSessionState(value: unknown): value is IBotSessionState {
-        return typeof value === 'object' && value !== null && !Array.isArray(value);
+        return (
+            typeof value === 'object' && value !== null && !Array.isArray(value)
+        );
     }
 
     private async saveSession(
@@ -248,7 +251,7 @@ export class BuilderService {
     ): Promise<void> {
         const key = chatId.toString();
         this.sessionCache.set(key, session);
-        await Promise.resolve(this.sessionStorage.set(chatId, session));
+        await this.sessionStorage.set(chatId, session);
     }
 
     private async resetToInitialPage(
@@ -446,8 +449,7 @@ export class BuilderService {
     private createDefaultSessionStorage(): IBotSessionStorage<IChatSessionState> {
         const store = new Map<string, IChatSessionState>();
         return {
-            get: (chatId: TelegramBot.ChatId) =>
-                store.get(chatId.toString()),
+            get: (chatId: TelegramBot.ChatId) => store.get(chatId.toString()),
             set: (chatId: TelegramBot.ChatId, state: IChatSessionState) => {
                 store.set(chatId.toString(), state);
             },
