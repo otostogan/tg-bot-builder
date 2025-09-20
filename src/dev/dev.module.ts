@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { BotBuilder } from '../';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import * as process from 'node:process';
+import { LogModule } from 'otostogan-nest-logger';
 import { createUrbanMarketBot } from './urban-market.bot';
 
 @Module({
@@ -22,6 +24,12 @@ import { createUrbanMarketBot } from './urban-market.bot';
 
                 return createUrbanMarketBot(token);
             },
+        }),
+        LogModule.forRootAsync({
+            useFactory: () => ({
+                APP_NAME: 'BotBuilder',
+                LOG_PATH: `${process.cwd()}/publisher`,
+            }),
         }),
     ],
 })
