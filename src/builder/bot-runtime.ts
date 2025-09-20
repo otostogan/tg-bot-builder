@@ -2,7 +2,6 @@ import {
     IBotBuilderContext,
     IBotBuilderOptions,
     IBotPage,
-    IBotPageNavigationOptions,
     IBotHandler,
     IBotMiddlewareConfig,
     IBotMiddlewareContext,
@@ -183,59 +182,6 @@ export class BotRuntime {
         this.logger.info(this.messages.runtimeInitialized({ id: this.id }));
 
         this.registerHandlers(options.handlers ?? []);
-    }
-
-    public registerPages(pages: IBotPage[]): void {
-        this.pageNavigator.registerPages(pages);
-    }
-
-    public async goToPage(
-        chatId: TelegramBot.ChatId,
-        pageId: TBotPageIdentifier,
-        options?: IBotPageNavigationOptions,
-    ): Promise<void> {
-        const page = this.pageNavigator.resolvePage(pageId);
-        if (!page) {
-            this.logger.warn(
-                this.messages.pageNotFound({
-                    pageId,
-                    chatId,
-                }),
-            );
-            return;
-        }
-
-        const session = await this.sessionManager.getSession(chatId);
-
-        if (options?.resetState) {
-            session.data = {};
-        }
-
-        if (options?.state) {
-            session.data = options.state;
-        }
-
-        session.data = session.data ?? {};
-
-        if (options?.user) {
-            session.user = options.user;
-        } else if (options?.message?.from) {
-            session.user = options.message.from;
-        }
-
-        session.pageId = page.id;
-        await this.sessionManager.saveSession(chatId, session);
-
-        const { buildContext } = await this.prepareContext({
-            chatId,
-            session,
-            message: options?.message,
-            metadata: options?.metadata,
-            user: options?.user,
-            pageId: page.id,
-        });
-
-        await this.pageNavigator.renderPage(page, buildContext());
     }
 
     private registerHandlers(handlers: IBotHandler[] = []): void {

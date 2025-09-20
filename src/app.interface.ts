@@ -216,10 +216,6 @@ export interface IBotBuilderOptions {
     slug?: string;
     services?: Record<string, unknown>;
     pageMiddlewares?: IBotPageMiddlewareConfig[];
-    /**
-     * Override runtime messages to introduce custom localisation or phrasing for
-     * built-in validation and middleware feedback.
-     */
     messages?: TBotRuntimeMessageOverrides;
 }
 

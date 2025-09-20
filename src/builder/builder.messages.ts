@@ -36,12 +36,6 @@ export type BotRuntimeMessageFactory = (
     overrides?: TBotRuntimeMessageOverrides,
 ) => IBotRuntimeMessages;
 
-/**
- * Creates a collection of runtime messages. Consumers can provide overrides to localise or
- * customise responses that are used by the runtime for logging and validation feedback.
- * Passing a factory via {@link BotRuntimeMessageFactory} allows plugging in a translation
- * system while reusing {@link DEFAULT_BOT_RUNTIME_MESSAGES} as a fallback.
- */
 export const createBotRuntimeMessages: BotRuntimeMessageFactory = (
     overrides = {},
 ) => ({

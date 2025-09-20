@@ -18,14 +18,6 @@ export interface PersistenceGatewayFactoryOptions {
     slug: string;
 }
 
-/**
- * Describes the persistence gateway contract consumed by {@link BotRuntime}.
- *
- * Implementations are expected to work with Prisma models named `user`,
- * `stepState` and `formEntry` that are compatible with the
- * {@link IPrismaUser} and {@link IPrismaStepState} interfaces defined in this
- * package.
- */
 export interface IPersistenceGateway {
     readonly prisma?: PrismaClient;
     ensureDatabaseState(
