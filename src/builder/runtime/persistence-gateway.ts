@@ -141,7 +141,10 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
                 updates.chatId = chatIdentifier;
             }
 
-            if (targetPageId !== undefined && stepState.currentPage !== targetPageId) {
+            if (
+                targetPageId !== undefined &&
+                stepState.currentPage !== targetPageId
+            ) {
                 updates.currentPage = targetPageId;
             }
 
