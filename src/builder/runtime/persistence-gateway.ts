@@ -1,17 +1,12 @@
 import TelegramBot = require('node-telegram-bot-api');
 import type { PrismaClient } from '@prisma/client/extension';
-import {
-    IPrismaStepState,
-    IPrismaUser,
-    TPrismaJsonValue,
-} from '../../app.interface';
+import { IPrismaStepState, IPrismaUser } from '../../app.interface';
 import { IChatSessionState } from './session-manager';
-
-interface IStepHistoryEntry {
-    pageId: string;
-    value: TPrismaJsonValue | null;
-    timestamp: string;
-}
+import {
+    normalizeAnswers,
+    normalizeHistory,
+    serializeValue,
+} from '../utils/serialization';
 
 export interface IContextDatabaseState {
     user?: IPrismaUser;
@@ -135,8 +130,8 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
                     chatId: chatIdentifier,
                     slug: this.slug,
                     currentPage: targetPageId ?? null,
-                    answers: this.serializeValue(session.data ?? {}),
-                    history: this.serializeValue([]),
+                    answers: serializeValue(session.data ?? {}),
+                    history: serializeValue([]),
                 },
             })) as unknown as IPrismaStepState;
         } else {
@@ -173,11 +168,11 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
             return stepState;
         }
 
-        const serializedValue = this.serializeValue(value);
-        const answers = this.normalizeAnswers(stepState.answers);
+        const serializedValue = serializeValue(value);
+        const answers = normalizeAnswers(stepState.answers);
         answers[pageId] = serializedValue;
 
-        const history = this.normalizeHistory(stepState.history);
+        const history = normalizeHistory(stepState.history);
         history.push({
             pageId,
             value: serializedValue,
@@ -233,85 +228,6 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
                 currentPage: targetPage,
             },
         })) as unknown as IPrismaStepState;
-    }
-
-    private normalizeAnswers(
-        answers: unknown,
-    ): Record<string, TPrismaJsonValue | null> {
-        if (!answers || typeof answers !== 'object' || Array.isArray(answers)) {
-            return {};
-        }
-
-        return {
-            ...(answers as Record<string, TPrismaJsonValue | null>),
-        };
-    }
-
-    private normalizeHistory(history: unknown): IStepHistoryEntry[] {
-        if (!Array.isArray(history)) {
-            return [];
-        }
-
-        return history
-            .map((entry) =>
-                typeof entry === 'object' && entry !== null
-                    ? (entry as Record<string, unknown>)
-                    : undefined,
-            )
-            .filter((entry): entry is Record<string, unknown> => Boolean(entry))
-            .map((entry) => {
-                const pageIdValue = entry.pageId;
-                const timestampValue = entry.timestamp;
-
-                const pageId =
-                    typeof pageIdValue === 'string'
-                        ? pageIdValue
-                        : String(pageIdValue ?? '');
-                const timestamp =
-                    typeof timestampValue === 'string'
-                        ? timestampValue
-                        : new Date().toISOString();
-
-                return {
-                    pageId,
-                    timestamp,
-                    value: this.serializeValue(entry.value),
-                };
-            });
-    }
-
-    private serializeValue(value: unknown): TPrismaJsonValue | null {
-        if (value === undefined) {
-            return null;
-        }
-
-        if (
-            value === null ||
-            typeof value === 'string' ||
-            typeof value === 'number' ||
-            typeof value === 'boolean'
-        ) {
-            return value as TPrismaJsonValue;
-        }
-
-        if (typeof value === 'bigint') {
-            return value.toString();
-        }
-
-        if (Array.isArray(value)) {
-            return value.map((item) => this.serializeValue(item)) as TPrismaJsonValue;
-        }
-
-        if (typeof value === 'object') {
-            const entries = Object.entries(value as Record<string, unknown>);
-            const normalized: Record<string, TPrismaJsonValue | null> = {};
-            for (const [key, item] of entries) {
-                normalized[key] = this.serializeValue(item);
-            }
-            return normalized as TPrismaJsonValue;
-        }
-
-        return null;
     }
 
     private normalizeChatId(chatId: TelegramBot.ChatId): string {

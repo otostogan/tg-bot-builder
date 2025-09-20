@@ -32,6 +32,12 @@ export {
     createPersistenceGateway,
 } from './builder/runtime/persistence-gateway';
 export {
+    IStepHistoryEntry,
+    normalizeAnswers,
+    normalizeHistory,
+    serializeValue,
+} from './builder/utils/serialization';
+export {
     BOT_BUILDER_MODULE_OPTIONS,
     BOT_BUILDER_PRISMA,
 } from './app.constants';
