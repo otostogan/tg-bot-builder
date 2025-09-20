@@ -1,4 +1,10 @@
-import { PrismaClient } from '@prisma/client';
+import {
+    IPrismaClient,
+    PrismaClientConstructor,
+    PrismaClientOptions,
+    getPrismaClientConstructor,
+    isPrismaClient,
+} from './prisma.client';
 import {
     IBotStorage,
     IBotStorageEnsureOptions,
@@ -10,37 +16,24 @@ import {
     TPrismaJsonValue,
 } from '../app.interface';
 
-type PrismaClientOptions = ConstructorParameters<typeof PrismaClient>[0];
-type MutablePrismaClientOptions = Record<string, unknown> & {
-    datasources?: Record<string, { url?: string }>;
-    datasourceUrl?: string;
-};
+type MutablePrismaClientOptions = PrismaClientOptions & Record<string, unknown>;
 
 export interface IPrismaStorageOptions {
-    client?: PrismaClient;
+    client?: IPrismaClient;
     prismaClientOptions?: PrismaClientOptions;
     datasourceUrl?: string;
     autoMigrate?: boolean;
 }
 
-function isPrismaClient(value: unknown): value is PrismaClient {
-    return (
-        typeof value === 'object' &&
-        value !== null &&
-        typeof (value as PrismaClient).$connect === 'function' &&
-        typeof (value as PrismaClient).$disconnect === 'function'
-    );
-}
-
 export class PrismaStorage implements IBotStorage {
-    private readonly prisma: PrismaClient;
+    private readonly prisma: IPrismaClient;
     private readonly ownsClient: boolean;
     private readonly autoMigrate: boolean;
     private isConnected = false;
     private schemaInitialized = false;
     private schemaInitialization?: Promise<void>;
 
-    constructor(options?: PrismaClient | IPrismaStorageOptions) {
+    constructor(options?: IPrismaClient | IPrismaStorageOptions) {
         const normalizedOptions = this.normalizeOptions(options);
         this.autoMigrate = normalizedOptions.autoMigrate;
 
@@ -48,6 +41,7 @@ export class PrismaStorage implements IBotStorage {
             this.prisma = normalizedOptions.client;
             this.ownsClient = false;
         } else {
+            const PrismaClient = this.getPrismaConstructor();
             const prismaOptions = this.mergePrismaOptions(normalizedOptions);
             this.prisma = prismaOptions
                 ? new PrismaClient(prismaOptions)
@@ -233,9 +227,9 @@ export class PrismaStorage implements IBotStorage {
     }
 
     private normalizeOptions(
-        options?: PrismaClient | IPrismaStorageOptions,
+        options?: IPrismaClient | IPrismaStorageOptions,
     ): {
-        client?: PrismaClient;
+        client?: IPrismaClient;
         prismaClientOptions?: PrismaClientOptions;
         datasourceUrl?: string;
         autoMigrate: boolean;
@@ -280,6 +274,17 @@ export class PrismaStorage implements IBotStorage {
         return Object.keys(prismaOptions).length > 0
             ? (prismaOptions as PrismaClientOptions)
             : undefined;
+    }
+
+    private getPrismaConstructor(): PrismaClientConstructor {
+        const PrismaClient = getPrismaClientConstructor();
+        if (!PrismaClient) {
+            throw new Error(
+                'PrismaClient constructor is not available. Provide a Prisma client instance to PrismaStorage or ensure that @prisma/client has been generated in the consuming project.',
+            );
+        }
+
+        return PrismaClient;
     }
 
     private async ensureReady(): Promise<void> {
