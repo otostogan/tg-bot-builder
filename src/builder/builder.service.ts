@@ -17,6 +17,10 @@ export class BuilderService {
     private readonly botOptions = new Map<string, IBotRuntimeOptions>();
     private readonly tokenToBotId = new Map<string, string>();
 
+    /**
+     * Creates a builder instance that keeps track of registered runtimes and
+     * optional Prisma dependencies injected from the Nest container.
+     */
     constructor(
         private readonly logger: PublisherService,
         @Optional()
@@ -24,6 +28,10 @@ export class BuilderService {
         private readonly prismaService?: PrismaClient,
     ) {}
 
+    /**
+     * Registers one or multiple bots described by the given options and returns
+     * the resolved bot identifiers in registration order.
+     */
     public registerBots(
         options: IBotBuilderOptions | IBotBuilderOptions[] = [],
     ): string[] {
@@ -31,11 +39,19 @@ export class BuilderService {
         return list.map((option, index) => this.registerBot(option, index));
     }
 
+    /**
+     * Normalizes builder options for a single bot and registers the
+     * corresponding runtime instance.
+     */
     public registerBot(options: IBotBuilderOptions, index?: number): string {
         const normalized = normalizeBotOptions(options, index);
         return this.registerNormalizedBot(normalized);
     }
 
+    /**
+     * Registers a bot runtime using already normalized options, replacing any
+     * previously running runtime that shares the same id or token.
+     */
     public registerNormalizedBot(options: IBotRuntimeOptions): string {
         const botId = options.id;
 
@@ -68,6 +84,10 @@ export class BuilderService {
         return botId;
     }
 
+    /**
+     * Stops and removes the runtime associated with the provided bot id if it
+     * is currently registered.
+     */
     private removeBot(botId: string): void {
         const runtime = this.bots.get(botId);
         if (!runtime) {
@@ -87,6 +107,10 @@ export class BuilderService {
         }
     }
 
+    /**
+     * Cleans internal caches and token associations for the specified bot
+     * runtime.
+     */
     private detachBot(botId: string, runtime: BotRuntime): void {
         const options = this.botOptions.get(botId);
         const token = options?.TG_BOT_TOKEN ?? runtime.token;
@@ -98,6 +122,10 @@ export class BuilderService {
         this.clearTokenMapping(token, botId);
     }
 
+    /**
+     * Removes the token-to-bot mapping when it is no longer associated with the
+     * provided bot id.
+     */
     private clearTokenMapping(token?: string, botId?: string): void {
         if (!token) {
             return;

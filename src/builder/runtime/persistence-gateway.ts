@@ -40,16 +40,25 @@ export interface IPersistenceGateway {
 class NoopPersistenceGateway implements IPersistenceGateway {
     public readonly prisma = undefined;
 
+    /**
+     * Provides an empty database state when persistence is not configured.
+     */
     public async ensureDatabaseState(): Promise<IContextDatabaseState> {
         return {};
     }
 
+    /**
+     * Skips persistence updates while mirroring the provided state.
+     */
     public async persistStepProgress(
         stepState: IPrismaStepState | undefined,
     ): Promise<IPrismaStepState | undefined> {
         return stepState;
     }
 
+    /**
+     * Leaves the tracked page unchanged when persistence is disabled.
+     */
     public async updateStepStateCurrentPage(
         stepState: IPrismaStepState | undefined,
     ): Promise<IPrismaStepState | undefined> {
@@ -66,11 +75,18 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
     public readonly prisma: PrismaClient;
     private readonly slug: string;
 
+    /**
+     * Stores the Prisma client and slug used to segregate builder data.
+     */
     constructor(options: PrismaPersistenceGatewayOptions) {
         this.prisma = options.prisma;
         this.slug = options.slug;
     }
 
+    /**
+     * Ensures user and step state records exist for the chat, creating or
+     * updating them based on the latest Telegram payload.
+     */
     public async ensureDatabaseState(
         chatId: TelegramBot.ChatId,
         session: IChatSessionState,
@@ -154,6 +170,10 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
         };
     }
 
+    /**
+     * Persists answers and history for the provided page submission and keeps
+     * per-page form entries in sync.
+     */
     public async persistStepProgress(
         stepState: IPrismaStepState | undefined,
         pageId: string,
@@ -204,6 +224,10 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
         return updatedStepState;
     }
 
+    /**
+     * Updates the current page tracked in persistence when the conversation
+     * flow advances or resets.
+     */
     public async updateStepStateCurrentPage(
         stepState: IPrismaStepState | undefined,
         pageId: string | undefined,
@@ -225,15 +249,26 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
         })) as unknown as IPrismaStepState;
     }
 
+    /**
+     * Normalizes chat identifiers to a string for consistent storage.
+     */
     private normalizeChatId(chatId: TelegramBot.ChatId): string {
         return typeof chatId === 'string' ? chatId : chatId.toString();
     }
 
+    /**
+     * Converts Telegram user identifiers into bigint form accepted by the
+     * database schema.
+     */
     private normalizeTelegramId(id: number | string): bigint {
         return typeof id === 'string' ? BigInt(id) : BigInt(id);
     }
 }
 
+/**
+ * Factory that selects the appropriate persistence gateway based on Prisma
+ * availability.
+ */
 export const createPersistenceGateway = (
     options: PersistenceGatewayFactoryOptions,
 ): IPersistenceGateway => {

@@ -62,6 +62,10 @@ export interface BotRuntimeDependencies {
     messageFactory?: BotRuntimeMessageFactory;
 }
 
+/**
+ * Derives runtime-ready bot options by cloning array inputs, resolving a
+ * fallback identifier, and ensuring defaults for optional properties.
+ */
 export function normalizeBotOptions(
     options: IBotBuilderOptions,
     index?: number,
@@ -129,6 +133,10 @@ export class BotRuntime {
     private readonly globalMiddlewares: IBotMiddlewareConfig[];
     private readonly messages: IBotRuntimeMessages;
 
+    /**
+     * Boots the Telegram runtime by wiring helpers, persistence, middleware,
+     * and handlers around the provided bot configuration.
+     */
     constructor(
         options: IBotRuntimeOptions,
         logger: PublisherService,
@@ -184,6 +192,10 @@ export class BotRuntime {
         this.registerHandlers(options.handlers ?? []);
     }
 
+    /**
+     * Attaches middleware-wrapped listeners for each configured handler and
+     * subscribes to base message events.
+     */
     private registerHandlers(handlers: IBotHandler[] = []): void {
         this.bot.on('message', this.handleMessage);
 
@@ -235,6 +247,10 @@ export class BotRuntime {
         }
     }
 
+    /**
+     * Core message entry point that retrieves the chat session, validates the
+     * current page, persists progress, and advances the conversation flow.
+     */
     private readonly handleMessage = async (
         message: TelegramBot.Message,
         metadata?: TelegramBot.Metadata,
@@ -328,6 +344,10 @@ export class BotRuntime {
         }
     };
 
+    /**
+     * Builds a middleware context tailored to the incoming Telegram event,
+     * loading session information when a chat id can be inferred.
+     */
     private async buildMiddlewareContext(
         event: keyof TelegramBot.TelegramEvents,
         args: unknown[],
@@ -377,6 +397,10 @@ export class BotRuntime {
         };
     }
 
+    /**
+     * Emits a structured log entry when a middleware pipeline throws an
+     * exception for a particular Telegram event.
+     */
     private logMiddlewareError(
         event: keyof TelegramBot.TelegramEvents,
         error: unknown,
@@ -384,6 +408,10 @@ export class BotRuntime {
         this.logger.error(this.messages.middlewareError({ event, error }));
     }
 
+    /**
+     * Attempts to locate a Telegram message object within middleware handler
+     * arguments, following nested structures when necessary.
+     */
     private extractMessageFromArgs(
         args: unknown[],
     ): TelegramBot.Message | undefined {
@@ -397,6 +425,10 @@ export class BotRuntime {
         return undefined;
     }
 
+    /**
+     * Recursively scans an arbitrary value for an embedded Telegram message,
+     * guarding against circular references via a visited set.
+     */
     private findMessageInValue(
         value: unknown,
         visited = new Set<unknown>(),
@@ -423,6 +455,10 @@ export class BotRuntime {
         return undefined;
     }
 
+    /**
+     * Retrieves Telegram metadata from handler arguments when available,
+     * skipping entries that merely repeat the message instance.
+     */
     private extractMetadataFromArgs(
         args: unknown[],
         message?: TelegramBot.Message,
@@ -443,6 +479,10 @@ export class BotRuntime {
         return candidate as TelegramBot.Metadata;
     }
 
+    /**
+     * Determines the chat identifier tied to the event using message details,
+     * argument inspection, or a fallback to the associated user id.
+     */
     private resolveChatIdFromArgs(
         args: unknown[],
         message?: TelegramBot.Message,
@@ -466,6 +506,10 @@ export class BotRuntime {
         return undefined;
     }
 
+    /**
+     * Searches an arbitrary object for nested chat identifiers commonly
+     * present on Telegram payloads.
+     */
     private extractChatIdFromValue(
         value: unknown,
     ): TelegramBot.ChatId | undefined {
@@ -499,6 +543,10 @@ export class BotRuntime {
         return undefined;
     }
 
+    /**
+     * Resolves the Telegram user participating in the event, inspecting
+     * message and handler arguments.
+     */
     private resolveUserFromArgs(
         args: unknown[],
         message?: TelegramBot.Message,
@@ -517,6 +565,9 @@ export class BotRuntime {
         return undefined;
     }
 
+    /**
+     * Traverses a value to locate a nested Telegram user object.
+     */
     private extractUserFromValue(value: unknown): TelegramBot.User | undefined {
         if (!value || typeof value !== 'object') {
             return undefined;
@@ -538,6 +589,10 @@ export class BotRuntime {
         return undefined;
     }
 
+    /**
+     * Initializes the conversation by moving the chat session to the initial
+     * page and rendering it for the user.
+     */
     private async startFromInitialPage(options: {
         chatId: TelegramBot.ChatId;
         session: IChatSessionState;
@@ -564,6 +619,10 @@ export class BotRuntime {
         await this.pageNavigator.renderPage(initialPage, buildContext());
     }
 
+    /**
+     * Ensures persistence state exists for the chat and returns a factory for
+     * building fresh handler contexts.
+     */
     private async prepareContext(options: {
         chatId: TelegramBot.ChatId;
         session: IChatSessionState;
@@ -594,6 +653,10 @@ export class BotRuntime {
         return { database, buildContext };
     }
 
+    /**
+     * Produces a helper that assembles builder contexts, supporting overrides
+     * for message-related properties when middlewares mutate them.
+     */
     private createContextBuilder(options: {
         chatId: TelegramBot.ChatId;
         session: IChatSessionState;
@@ -631,6 +694,10 @@ export class BotRuntime {
         };
     }
 
+    /**
+     * Notifies the user about validation errors and re-renders the current
+     * page to allow correcting input.
+     */
     private async processValidationFailure(options: {
         chatId: TelegramBot.ChatId;
         page: IBotPage;
@@ -647,6 +714,10 @@ export class BotRuntime {
         );
     }
 
+    /**
+     * Moves the session forward to the computed next page, persisting the new
+     * position and rendering the next form step when available.
+     */
     private async advanceToNextPage(options: {
         chatId: TelegramBot.ChatId;
         session: IChatSessionState;
@@ -705,6 +776,10 @@ export class BotRuntime {
         );
     }
 
+    /**
+     * Clears progress when the session references an invalid page and returns
+     * the user to the start of the flow if possible.
+     */
     private async resetToInitialPage(
         chatId: TelegramBot.ChatId,
         session: IChatSessionState,
@@ -736,6 +811,10 @@ export class BotRuntime {
         await this.pageNavigator.renderPage(initialPage, buildContext());
     }
 
+    /**
+     * Materializes a full builder context object used by handlers and
+     * middlewares.
+     */
     private createContext(options: IBuilderContextOptions): IBotBuilderContext {
         const user =
             options.user ?? options.message?.from ?? options.session.user;

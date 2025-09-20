@@ -45,6 +45,10 @@ export class PageNavigator {
     >();
     private initialPageId?: TBotPageIdentifier;
 
+    /**
+     * Initializes lookup tables for pages, keyboards and middlewares using the
+     * provided runtime dependencies.
+     */
     constructor(private readonly options: PageNavigatorOptions) {
         this.initialPageId = options.initialPageId;
 
@@ -68,6 +72,10 @@ export class PageNavigator {
         }
     }
 
+    /**
+     * Registers or replaces pages and refreshes cached middleware metadata for
+     * faster lookup during navigation.
+     */
     public registerPages(pages: IBotPage[]): void {
         if (!Array.isArray(pages) || pages.length === 0) {
             return;
@@ -106,10 +114,17 @@ export class PageNavigator {
         }
     }
 
+    /**
+     * Resolves a page by identifier from the local registry, if present.
+     */
     public resolvePage(pageId: TBotPageIdentifier): IBotPage | undefined {
         return this.pagesMap.get(pageId);
     }
 
+    /**
+     * Resolves the initial page either from the configured id or by falling
+     * back to the first registered page.
+     */
     public resolveInitialPage(): IBotPage | undefined {
         if (this.initialPageId) {
             const initialPage = this.pagesMap.get(this.initialPageId);
@@ -125,10 +140,18 @@ export class PageNavigator {
         return this.pages[0];
     }
 
+    /**
+     * Updates which page should be treated as the entry point for new chat
+     * sessions.
+     */
     public setInitialPage(pageId: TBotPageIdentifier | undefined): void {
         this.initialPageId = pageId;
     }
 
+    /**
+     * Extracts a user-provided value from a Telegram message, covering common
+     * message payload types such as text, contacts, and documents.
+     */
     public extractMessageValue(message: TelegramBot.Message): unknown {
         if (typeof message.text === 'string') {
             return message.text;
@@ -157,6 +180,10 @@ export class PageNavigator {
         return message;
     }
 
+    /**
+     * Validates user input for a page using Yup schemas and optional custom
+     * validators, returning a descriptive error when validation fails.
+     */
     public async validatePageValue(
         page: IBotPage,
         value: unknown,
@@ -199,6 +226,10 @@ export class PageNavigator {
         return { valid: true };
     }
 
+    /**
+     * Determines the id of the next page to present, favouring explicit
+     * navigation logic before falling back to sequential ordering.
+     */
     public async resolveNextPageId(
         currentPage: IBotPage,
         context: IBotBuilderContext,
@@ -220,6 +251,10 @@ export class PageNavigator {
         return undefined;
     }
 
+    /**
+     * Renders the provided page by running middleware guards, preparing
+     * content and keyboards, and sending the resulting message to Telegram.
+     */
     public async renderPage(
         page: IBotPage,
         context: IBotBuilderContext,
@@ -258,6 +293,10 @@ export class PageNavigator {
         });
     }
 
+    /**
+     * Executes page-level middlewares in priority order and reports whether
+     * rendering should proceed.
+     */
     private async executePageMiddlewares(
         page: IBotPage,
         context: IBotBuilderContext,
@@ -285,10 +324,17 @@ export class PageNavigator {
         return { allow: true };
     }
 
+    /**
+     * Retrieves the cached middleware set for the given page.
+     */
     private resolvePageMiddlewares(page: IBotPage): IBotPageMiddlewareConfig[] {
         return this.pageMiddlewaresCache.get(page.id) ?? [];
     }
 
+    /**
+     * Normalizes middleware references configured on a page and stores a sorted
+     * list for quick access during rendering.
+     */
     private cachePageMiddlewares(page: IBotPage): void {
         if (!page.middlewares || page.middlewares.length === 0) {
             this.pageMiddlewaresCache.delete(page.id);
@@ -318,6 +364,9 @@ export class PageNavigator {
         this.pageMiddlewaresCache.set(page.id, resolved);
     }
 
+    /**
+     * Converts middleware handler return values into a consistent format.
+     */
     private normalizePageMiddlewareResult(
         result: TBotPageMiddlewareHandlerResult,
     ): IBotPageMiddlewareResult {
@@ -338,6 +387,10 @@ export class PageNavigator {
         return { allow: true };
     }
 
+    /**
+     * Resolves page content to a message payload, evaluating lazy factories as
+     * needed.
+     */
     private async resolvePageContent(
         content: TBotPageContent,
         context: IBotBuilderContext,
@@ -351,6 +404,9 @@ export class PageNavigator {
         return result;
     }
 
+    /**
+     * Ensures page content handlers produce a structured message definition.
+     */
     private async normalizePageContent(
         content: TBotPageContent,
         context: IBotBuilderContext,
@@ -362,6 +418,10 @@ export class PageNavigator {
         return content;
     }
 
+    /**
+     * Chooses the most appropriate keyboard for a page, favouring dedicated
+     * keyboards but falling back to persistent ones when applicable.
+     */
     private async resolveKeyboard(
         pageId: TBotPageIdentifier,
         context: IBotBuilderContext,
@@ -387,6 +447,9 @@ export class PageNavigator {
 
 export interface PageNavigatorFactoryOptions extends PageNavigatorOptions {}
 
+/**
+ * Factory helper that instantiates the default page navigator implementation.
+ */
 export const createPageNavigator = (
     options: PageNavigatorFactoryOptions,
 ): PageNavigator => new PageNavigator(options);

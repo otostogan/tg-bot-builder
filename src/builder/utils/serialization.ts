@@ -6,6 +6,10 @@ export interface IStepHistoryEntry {
     timestamp: string;
 }
 
+/**
+ * Converts arbitrary values into a Prisma JSON-friendly representation while
+ * preserving nested structures.
+ */
 export const serializeValue = (value: unknown): TPrismaJsonValue | null => {
     if (value === undefined) {
         return null;
@@ -40,6 +44,10 @@ export const serializeValue = (value: unknown): TPrismaJsonValue | null => {
     return null;
 };
 
+/**
+ * Produces a shallow copy of stored answers, ensuring the result is a record
+ * even when invalid data is received.
+ */
 export const normalizeAnswers = (
     answers: unknown,
 ): Record<string, TPrismaJsonValue | null> => {
@@ -52,6 +60,10 @@ export const normalizeAnswers = (
     };
 };
 
+/**
+ * Cleans up persisted history entries to a predictable shape and re-serializes
+ * nested values.
+ */
 export const normalizeHistory = (history: unknown): IStepHistoryEntry[] => {
     if (!Array.isArray(history)) {
         return [];
