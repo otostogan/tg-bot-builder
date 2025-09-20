@@ -240,3 +240,26 @@ const updateLogger: IBotMiddlewareConfig = {
   },
 };
 ```
+
+## Publication metadata
+
+Use the following metadata snippet when preparing the package for publication:
+
+```json
+{
+  "name": "tg-bot-builder",
+  "version": "0.0.4",
+  "description": "Modular NestJS builder for multi-step Telegram bots with Prisma persistence and pluggable session storage.",
+  "keywords": [
+    "nestjs",
+    "telegram-bot",
+    "bot-builder",
+    "wizard-flow",
+    "prisma",
+    "session-storage",
+    "dynamic-module"
+  ],
+  "author": "otostogan",
+  "license": "MIT"
+}
+```
