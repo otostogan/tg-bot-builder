@@ -10,15 +10,48 @@ import {
     TPrismaJsonValue,
 } from '../app.interface';
 
-export class PrismaStorage implements IBotStorage {
-    private isConnected = false;
+export interface IPrismaStorageOptions {
+    client?: PrismaClient;
+    prismaClientOptions?: Prisma.PrismaClientOptions;
+    datasourceUrl?: string;
+    autoMigrate?: boolean;
+}
 
-    constructor(private readonly prisma: PrismaClient) {}
+function isPrismaClient(value: unknown): value is PrismaClient {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        typeof (value as PrismaClient).$connect === 'function' &&
+        typeof (value as PrismaClient).$disconnect === 'function'
+    );
+}
+
+export class PrismaStorage implements IBotStorage {
+    private readonly prisma: PrismaClient;
+    private readonly ownsClient: boolean;
+    private readonly autoMigrate: boolean;
+    private isConnected = false;
+    private schemaInitialized = false;
+    private schemaInitialization?: Promise<void>;
+
+    constructor(options?: PrismaClient | IPrismaStorageOptions) {
+        const normalizedOptions = this.normalizeOptions(options);
+        this.autoMigrate = normalizedOptions.autoMigrate ?? true;
+
+        if (normalizedOptions.client) {
+            this.prisma = normalizedOptions.client;
+            this.ownsClient = false;
+        } else {
+            const prismaOptions = this.mergePrismaOptions(normalizedOptions);
+            this.prisma = new PrismaClient(prismaOptions);
+            this.ownsClient = true;
+        }
+    }
 
     public async ensureState(
         options: IBotStorageEnsureOptions,
     ): Promise<IBotStorageState> {
-        await this.ensureConnected();
+        await this.ensureReady();
 
         const telegramId = this.normalizeTelegramId(options.telegramUser.id);
 
@@ -91,14 +124,15 @@ export class PrismaStorage implements IBotStorage {
     public async saveStepProgress(
         options: IBotStorageSaveProgressOptions,
     ): Promise<IBotStorageStepState | undefined> {
-        await this.ensureConnected();
+        await this.ensureReady();
 
         const historyValue = (this.serializeValue(options.history) ?? []) as Prisma.InputJsonValue;
+        const answersValue = (this.serializeValue(options.answers) ?? {}) as Prisma.InputJsonValue;
 
         const updatedStepState = (await this.prisma.stepState.update({
             where: { id: this.toNumber(options.stepState.id) },
             data: {
-                answers: options.answers,
+                answers: answersValue,
                 history: historyValue,
             },
         })) as unknown as IBotStorageStepState;
@@ -128,7 +162,7 @@ export class PrismaStorage implements IBotStorage {
     public async updateCurrentPage(
         options: IBotStorageUpdateCurrentPageOptions,
     ): Promise<IBotStorageStepState | undefined> {
-        await this.ensureConnected();
+        await this.ensureReady();
 
         return (await this.prisma.stepState.update({
             where: { id: this.toNumber(options.stepState.id) },
@@ -138,13 +172,13 @@ export class PrismaStorage implements IBotStorage {
         })) as unknown as IBotStorageStepState;
     }
 
-    private async ensureConnected(): Promise<void> {
-        if (this.isConnected) {
+    public async disconnect(): Promise<void> {
+        if (!this.ownsClient || !this.isConnected) {
             return;
         }
 
-        await this.prisma.$connect();
-        this.isConnected = true;
+        await this.prisma.$disconnect();
+        this.isConnected = false;
     }
 
     private normalizeTelegramId(id: number | string): bigint {
@@ -187,5 +221,127 @@ export class PrismaStorage implements IBotStorage {
         }
 
         return null;
+    }
+
+    private normalizeOptions(
+        options?: PrismaClient | IPrismaStorageOptions,
+    ): Required<Omit<IPrismaStorageOptions, 'client'>> & {
+        client?: PrismaClient;
+    } {
+        if (isPrismaClient(options)) {
+            return {
+                client: options,
+                prismaClientOptions: {},
+                datasourceUrl: undefined,
+                autoMigrate: true,
+            };
+        }
+
+        const normalized = options ?? {};
+
+        return {
+            client: normalized.client,
+            prismaClientOptions: normalized.prismaClientOptions ?? {},
+            datasourceUrl: normalized.datasourceUrl,
+            autoMigrate: normalized.autoMigrate ?? true,
+        };
+    }
+
+    private mergePrismaOptions(
+        options: Required<Omit<IPrismaStorageOptions, 'client'>> & {
+            client?: PrismaClient;
+        },
+    ): Prisma.PrismaClientOptions {
+        const prismaOptions = { ...options.prismaClientOptions };
+
+        if (options.datasourceUrl) {
+            prismaOptions.datasources = {
+                db: { url: options.datasourceUrl },
+            } as Prisma.PrismaClientOptions['datasources'];
+        }
+
+        return prismaOptions;
+    }
+
+    private async ensureReady(): Promise<void> {
+        if (!this.isConnected) {
+            await this.prisma.$connect();
+            this.isConnected = true;
+        }
+
+        if (!this.autoMigrate) {
+            return;
+        }
+
+        if (!this.schemaInitialized) {
+            if (!this.schemaInitialization) {
+                this.schemaInitialization = this.applyMigrations()
+                    .then(() => {
+                        this.schemaInitialized = true;
+                    })
+                    .catch((error) => {
+                        this.schemaInitialization = undefined;
+                        throw error;
+                    });
+            }
+
+            await this.schemaInitialization;
+        }
+    }
+
+    private async applyMigrations(): Promise<void> {
+        const statements = [
+            `CREATE TABLE IF NOT EXISTS "User" (
+                "id" SERIAL PRIMARY KEY,
+                "telegramId" BIGINT NOT NULL UNIQUE,
+                "chatId" TEXT,
+                "username" TEXT,
+                "firstName" TEXT,
+                "lastName" TEXT,
+                "languageCode" TEXT,
+                "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )`,
+            `CREATE TABLE IF NOT EXISTS "StepState" (
+                "id" SERIAL PRIMARY KEY,
+                "userId" INTEGER NOT NULL,
+                "chatId" TEXT NOT NULL,
+                "slug" TEXT NOT NULL,
+                "currentPage" TEXT,
+                "answers" JSONB,
+                "history" JSONB,
+                "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT "StepState_userId_fkey"
+                    FOREIGN KEY ("userId")
+                    REFERENCES "User"("id")
+                    ON DELETE CASCADE
+            )`,
+            `CREATE TABLE IF NOT EXISTS "FormEntry" (
+                "id" SERIAL PRIMARY KEY,
+                "userId" INTEGER NOT NULL,
+                "stepStateId" INTEGER NOT NULL,
+                "slug" TEXT NOT NULL,
+                "pageId" TEXT NOT NULL,
+                "payload" JSONB NOT NULL,
+                "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT "FormEntry_userId_fkey"
+                    FOREIGN KEY ("userId")
+                    REFERENCES "User"("id")
+                    ON DELETE CASCADE,
+                CONSTRAINT "FormEntry_stepStateId_fkey"
+                    FOREIGN KEY ("stepStateId")
+                    REFERENCES "StepState"("id")
+                    ON DELETE CASCADE
+            )`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS "StepState_userId_slug_key"
+                ON "StepState" ("userId", "slug")`,
+            `CREATE UNIQUE INDEX IF NOT EXISTS "FormEntry_stepStateId_pageId_key"
+                ON "FormEntry" ("stepStateId", "pageId")`,
+        ];
+
+        for (const statement of statements) {
+            await this.prisma.$executeRawUnsafe(statement);
+        }
     }
 }

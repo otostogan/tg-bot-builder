@@ -15,22 +15,25 @@ export class BotBuilder {
     static forRootAsync(options: IBotBuilderModuleAsyncOptions): DynamicModule {
         const asyncOptions = this.createAsyncOptionsProvider(options);
         const botsRegistration = this.createBotsRegistrationProvider();
+        const registerPrisma = options.registerPrismaService ?? true;
+
+        const providers: Provider[] = [
+            asyncOptions,
+            BuilderService,
+            botsRegistration,
+        ];
+
+        if (registerPrisma) {
+            providers.push(PrismaService);
+        }
 
         return {
             module: BotBuilder,
             imports: options.imports ?? [],
-            providers: [
-                asyncOptions,
-                PrismaService,
-                BuilderService,
-                botsRegistration,
-            ],
-            exports: [
-                BotBuilder,
-                BuilderService,
-                PrismaService,
-                BOT_BUILDER_MODULE_OPTIONS,
-            ],
+            providers,
+            exports: registerPrisma
+                ? [BotBuilder, BuilderService, PrismaService, BOT_BUILDER_MODULE_OPTIONS]
+                : [BotBuilder, BuilderService, BOT_BUILDER_MODULE_OPTIONS],
         };
     }
 

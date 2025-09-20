@@ -238,6 +238,7 @@ export interface IBotBuilderOptions {
 export interface IBotBuilderModuleAsyncOptions
     extends Pick<ModuleMetadata, 'imports'> {
     imports?: ModuleMetadata['imports'];
+    registerPrismaService?: boolean;
     useFactory: (
         ...args: any[]
     ) =>

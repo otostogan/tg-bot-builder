@@ -7,6 +7,7 @@ export {
 } from './builder/bot-runtime';
 export { PrismaService } from './prisma/prisma.service';
 export { PrismaStorage } from './prisma/prisma.storage';
+export { MemoryStorage } from './storage/memory.storage';
 export {
     IBotBuilderModuleAsyncOptions,
     IBotBuilderOptions,

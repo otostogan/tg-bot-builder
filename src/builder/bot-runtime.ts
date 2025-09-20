@@ -24,6 +24,7 @@ import {
 import { PublisherService } from 'otostogan-nest-logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { PrismaStorage } from '../prisma/prisma.storage';
+import { MemoryStorage } from '../storage/memory.storage';
 import TelegramBot = require('node-telegram-bot-api');
 
 const DEFAULT_PAGE_MIDDLEWARE_REJECTION_MESSAGE =
@@ -156,6 +157,8 @@ export class BotRuntime {
             this.storage = options.storage ?? undefined;
         } else if (this.prisma) {
             this.storage = new PrismaStorage(this.prisma);
+        } else {
+            this.storage = new MemoryStorage();
         }
         this.slug = options.slug ?? 'default';
         this.helperServices = options.services ?? {};
