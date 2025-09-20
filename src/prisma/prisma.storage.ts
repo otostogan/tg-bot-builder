@@ -11,6 +11,10 @@ import {
 } from '../app.interface';
 
 type PrismaClientOptions = ConstructorParameters<typeof PrismaClient>[0];
+type MutablePrismaClientOptions = Record<string, unknown> & {
+    datasources?: Record<string, { url?: string }>;
+    datasourceUrl?: string;
+};
 
 export interface IPrismaStorageOptions {
     client?: PrismaClient;
@@ -261,8 +265,8 @@ export class PrismaStorage implements IBotStorage {
             datasourceUrl?: string;
         },
     ): PrismaClientOptions | undefined {
-        const prismaOptions: PrismaClientOptions = {
-            ...(options.prismaClientOptions ?? {}),
+        const prismaOptions: MutablePrismaClientOptions = {
+            ...((options.prismaClientOptions ?? {}) as MutablePrismaClientOptions),
         };
 
         if (options.datasourceUrl) {
@@ -273,7 +277,9 @@ export class PrismaStorage implements IBotStorage {
             prismaOptions.datasourceUrl = options.datasourceUrl;
         }
 
-        return Object.keys(prismaOptions).length > 0 ? prismaOptions : undefined;
+        return Object.keys(prismaOptions).length > 0
+            ? (prismaOptions as PrismaClientOptions)
+            : undefined;
     }
 
     private async ensureReady(): Promise<void> {
