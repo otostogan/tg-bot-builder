@@ -13,6 +13,11 @@ export {
     createPageNavigator,
 } from './builder/runtime/page-navigator';
 export {
+    buildMiddlewarePipeline,
+    mergeMiddlewareConfigs,
+    sortMiddlewareConfigs,
+} from './builder/runtime/middleware-pipeline';
+export {
     SessionManager,
     SessionManagerFactoryOptions,
     IChatSessionState,
