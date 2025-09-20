@@ -84,9 +84,7 @@ export function normalizeBotOptions(
         (index !== undefined ? `bot-${index}` : undefined);
 
     if (!fallbackId) {
-        throw new Error(
-            DEFAULT_BOT_RUNTIME_MESSAGES.botIdResolutionFailed(),
-        );
+        throw new Error(DEFAULT_BOT_RUNTIME_MESSAGES.botIdResolutionFailed());
     }
 
     return {
@@ -182,9 +180,7 @@ export class BotRuntime {
 
         this.pageNavigator.registerPages(options.pages ?? []);
 
-        this.logger.info(
-            this.messages.runtimeInitialized({ id: this.id }),
-        );
+        this.logger.info(this.messages.runtimeInitialized({ id: this.id }));
 
         this.registerHandlers(options.handlers ?? []);
     }
@@ -382,9 +378,7 @@ export class BotRuntime {
                 buildContext,
             });
         } catch (error) {
-            this.logger.error(
-                this.messages.messageHandlingError({ error }),
-            );
+            this.logger.error(this.messages.messageHandlingError({ error }));
         }
     };
 
@@ -441,9 +435,7 @@ export class BotRuntime {
         event: keyof TelegramBot.TelegramEvents,
         error: unknown,
     ): void {
-        this.logger.error(
-            this.messages.middlewareError({ event, error }),
-        );
+        this.logger.error(this.messages.middlewareError({ event, error }));
     }
 
     private extractMessageFromArgs(
@@ -700,8 +692,7 @@ export class BotRuntime {
         buildContext: ContextFactory;
     }): Promise<void> {
         const errorMessage =
-            options.errorMessage ??
-            this.messages.validationFailed();
+            options.errorMessage ?? this.messages.validationFailed();
 
         await this.bot.sendMessage(options.chatId, errorMessage);
         await this.pageNavigator.renderPage(

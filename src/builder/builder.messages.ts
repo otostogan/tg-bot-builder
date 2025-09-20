@@ -28,8 +28,9 @@ const DEFAULT_MESSAGES: IBotRuntimeMessages = {
     validationFailed: () => 'Введены некорректные данные, попробуйте ещё раз.',
 };
 
-export const DEFAULT_BOT_RUNTIME_MESSAGES: IBotRuntimeMessages =
-    Object.freeze(DEFAULT_MESSAGES) as IBotRuntimeMessages;
+export const DEFAULT_BOT_RUNTIME_MESSAGES: IBotRuntimeMessages = Object.freeze(
+    DEFAULT_MESSAGES,
+) as IBotRuntimeMessages;
 
 export type BotRuntimeMessageFactory = (
     overrides?: TBotRuntimeMessageOverrides,

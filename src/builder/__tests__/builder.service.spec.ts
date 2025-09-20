@@ -76,8 +76,9 @@ describe('BuilderService', () => {
             createOptions({ id: 'bot-1', TG_BOT_TOKEN: 'token-1' }),
         );
 
-        const tokenMap = (service as unknown as { tokenToBotId: Map<string, string> })
-            .tokenToBotId;
+        const tokenMap = (
+            service as unknown as { tokenToBotId: Map<string, string> }
+        ).tokenToBotId;
         expect(tokenMap.get('token-1')).toBe('bot-1');
 
         service.registerNormalizedBot(
@@ -96,16 +97,19 @@ describe('BuilderService', () => {
             createOptions({ id: 'bot-2', TG_BOT_TOKEN: 'token-old' }),
         );
 
-        (runtimeMocks[0].bot.stopPolling as jest.Mock).mockImplementation(() => {
-            throw new Error('stop failed');
-        });
+        (runtimeMocks[0].bot.stopPolling as jest.Mock).mockImplementation(
+            () => {
+                throw new Error('stop failed');
+            },
+        );
 
         service.registerNormalizedBot(
             createOptions({ id: 'bot-2', TG_BOT_TOKEN: 'token-new' }),
         );
 
-        const tokenMap = (service as unknown as { tokenToBotId: Map<string, string> })
-            .tokenToBotId;
+        const tokenMap = (
+            service as unknown as { tokenToBotId: Map<string, string> }
+        ).tokenToBotId;
 
         expect(tokenMap.get('token-old')).toBeUndefined();
         expect(tokenMap.get('token-new')).toBe('bot-2');
