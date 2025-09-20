@@ -90,6 +90,12 @@ interface IBuilderContextOptions {
     database?: IContextDatabaseState;
 }
 
+type ContextFactoryOverrides = Partial<
+    Pick<IBuilderContextOptions, 'message' | 'metadata' | 'user'>
+>;
+
+type ContextFactory = (overrides?: ContextFactoryOverrides) => IBotBuilderContext;
+
 export class BotRuntime {
     public readonly id: string;
     public readonly token: string;
@@ -187,23 +193,16 @@ export class BotRuntime {
         session.pageId = page.id;
         await this.sessionManager.saveSession(chatId, session);
 
-        const database = await this.persistenceGateway.ensureDatabaseState(
-            chatId,
-            session,
-            options?.message,
-            page.id,
-        );
-
-        const context = this.createContext({
+        const { buildContext } = await this.prepareContext({
             chatId,
             session,
             message: options?.message,
             metadata: options?.metadata,
             user: options?.user,
-            database,
+            pageId: page.id,
         });
 
-        await this.pageNavigator.renderPage(page, context);
+        await this.pageNavigator.renderPage(page, buildContext());
     }
 
     private registerHandlers(): void {
@@ -220,45 +219,16 @@ export class BotRuntime {
             if (message.from) {
                 session.user = message.from;
             }
-            let database = await this.persistenceGateway.ensureDatabaseState(
-                chatId,
-                session,
-                message,
-                session.pageId,
-            );
 
-            let context = this.createContext({
-                chatId,
-                session,
-                message,
-                metadata,
-                database,
-            });
+            session.data = session.data ?? {};
 
             if (!session.pageId) {
-                const initialPage = this.pageNavigator.resolveInitialPage();
-                if (!initialPage) {
-                    this.logger.warn('No initial page configured');
-                    return;
-                }
-
-                session.pageId = initialPage.id;
-                session.data = session.data ?? {};
-                await this.sessionManager.saveSession(chatId, session);
-                database = await this.persistenceGateway.ensureDatabaseState(
-                    chatId,
-                    session,
-                    message,
-                    session.pageId,
-                );
-                context = this.createContext({
+                await this.startFromInitialPage({
                     chatId,
                     session,
                     message,
                     metadata,
-                    database,
                 });
-                await this.pageNavigator.renderPage(initialPage, context);
                 return;
             }
 
@@ -271,6 +241,14 @@ export class BotRuntime {
                 return;
             }
 
+            const { database, buildContext } = await this.prepareContext({
+                chatId,
+                session,
+                message,
+                metadata,
+            });
+            const context = buildContext();
+
             const value = this.pageNavigator.extractMessageValue(message);
             const validationResult = await this.pageNavigator.validatePageValue(
                 currentPage,
@@ -279,14 +257,12 @@ export class BotRuntime {
             );
 
             if (!validationResult.valid) {
-                const errorMessage =
-                    validationResult.errorMessage ??
-                    'Введены некорректные данные, попробуйте ещё раз.';
-                await this.bot.sendMessage(chatId, errorMessage);
-                await this.pageNavigator.renderPage(
-                    currentPage,
-                    this.createContext({ chatId, session, database }),
-                );
+                await this.processValidationFailure({
+                    chatId,
+                    page: currentPage,
+                    errorMessage: validationResult.errorMessage,
+                    buildContext,
+                });
                 return;
             }
 
@@ -303,68 +279,21 @@ export class BotRuntime {
             }
 
             if (currentPage.onValid) {
-                await currentPage.onValid(
-                    this.createContext({
-                        chatId,
-                        session,
-                        message,
-                        metadata,
-                        database,
-                    }),
-                );
+                await currentPage.onValid(buildContext());
             }
 
             const nextPageId = await this.pageNavigator.resolveNextPageId(
                 currentPage,
-                this.createContext({
-                    chatId,
-                    session,
-                    message,
-                    metadata,
-                    database,
-                }),
+                buildContext(),
             );
 
-            if (!nextPageId) {
-                session.pageId = undefined;
-                await this.sessionManager.saveSession(chatId, session);
-                await this.persistenceGateway.updateStepStateCurrentPage(
-                    database.stepState,
-                    undefined,
-                );
-                return;
-            }
-
-            const nextPage = this.pageNavigator.resolvePage(nextPageId);
-            if (!nextPage) {
-                this.logger.warn(
-                    `Next page with id "${nextPageId}" not found for chat ${chatId}`,
-                );
-                session.pageId = undefined;
-                await this.sessionManager.saveSession(chatId, session);
-                await this.persistenceGateway.updateStepStateCurrentPage(
-                    database.stepState,
-                    undefined,
-                );
-                return;
-            }
-
-            session.pageId = nextPage.id;
-            await this.sessionManager.saveSession(chatId, session);
-
-            const nextStepState =
-                await this.persistenceGateway.updateStepStateCurrentPage(
-                    database.stepState,
-                    nextPage.id,
-                );
-            if (nextStepState) {
-                database.stepState = nextStepState;
-            }
-
-            await this.pageNavigator.renderPage(
-                nextPage,
-                this.createContext({ chatId, session, database }),
-            );
+            await this.advanceToNextPage({
+                chatId,
+                session,
+                nextPageId,
+                database,
+                buildContext,
+            });
         } catch (error) {
             const message =
                 error instanceof Error
@@ -374,6 +303,165 @@ export class BotRuntime {
         }
     };
 
+    private async startFromInitialPage(options: {
+        chatId: TelegramBot.ChatId;
+        session: IChatSessionState;
+        message: TelegramBot.Message;
+        metadata?: TelegramBot.Metadata;
+    }): Promise<void> {
+        const initialPage = this.pageNavigator.resolveInitialPage();
+        if (!initialPage) {
+            this.logger.warn('No initial page configured');
+            return;
+        }
+
+        options.session.pageId = initialPage.id;
+        options.session.data = options.session.data ?? {};
+        await this.sessionManager.saveSession(options.chatId, options.session);
+
+        const { buildContext } = await this.prepareContext({
+            chatId: options.chatId,
+            session: options.session,
+            message: options.message,
+            metadata: options.metadata,
+        });
+
+        await this.pageNavigator.renderPage(initialPage, buildContext());
+    }
+
+    private async prepareContext(options: {
+        chatId: TelegramBot.ChatId;
+        session: IChatSessionState;
+        message?: TelegramBot.Message;
+        metadata?: TelegramBot.Metadata;
+        user?: TelegramBot.User;
+        pageId?: TBotPageIdentifier;
+    }): Promise<{
+        database: IContextDatabaseState;
+        buildContext: ContextFactory;
+    }> {
+        const database = await this.persistenceGateway.ensureDatabaseState(
+            options.chatId,
+            options.session,
+            options.message,
+            options.pageId ?? options.session.pageId,
+        );
+
+        const buildContext = this.createContextBuilder({
+            chatId: options.chatId,
+            session: options.session,
+            database,
+            message: options.message,
+            metadata: options.metadata,
+            user: options.user,
+        });
+
+        return { database, buildContext };
+    }
+
+    private createContextBuilder(options: {
+        chatId: TelegramBot.ChatId;
+        session: IChatSessionState;
+        database?: IContextDatabaseState;
+        message?: TelegramBot.Message;
+        metadata?: TelegramBot.Metadata;
+        user?: TelegramBot.User;
+    }): ContextFactory {
+        return (overrides = {}) => {
+            const hasMessageOverride = Object.prototype.hasOwnProperty.call(
+                overrides,
+                'message',
+            );
+            const hasMetadataOverride = Object.prototype.hasOwnProperty.call(
+                overrides,
+                'metadata',
+            );
+            const hasUserOverride = Object.prototype.hasOwnProperty.call(
+                overrides,
+                'user',
+            );
+
+            return this.createContext({
+                chatId: options.chatId,
+                session: options.session,
+                database: options.database,
+                message: hasMessageOverride
+                    ? overrides.message
+                    : options.message,
+                metadata: hasMetadataOverride
+                    ? overrides.metadata
+                    : options.metadata,
+                user: hasUserOverride ? overrides.user : options.user,
+            });
+        };
+    }
+
+    private async processValidationFailure(options: {
+        chatId: TelegramBot.ChatId;
+        page: IBotPage;
+        errorMessage?: string;
+        buildContext: ContextFactory;
+    }): Promise<void> {
+        const errorMessage =
+            options.errorMessage ??
+            'Введены некорректные данные, попробуйте ещё раз.';
+
+        await this.bot.sendMessage(options.chatId, errorMessage);
+        await this.pageNavigator.renderPage(
+            options.page,
+            options.buildContext({ message: undefined, metadata: undefined }),
+        );
+    }
+
+    private async advanceToNextPage(options: {
+        chatId: TelegramBot.ChatId;
+        session: IChatSessionState;
+        nextPageId?: TBotPageIdentifier;
+        database: IContextDatabaseState;
+        buildContext: ContextFactory;
+    }): Promise<void> {
+        if (!options.nextPageId) {
+            options.session.pageId = undefined;
+            await this.sessionManager.saveSession(options.chatId, options.session);
+            await this.persistenceGateway.updateStepStateCurrentPage(
+                options.database.stepState,
+                undefined,
+            );
+            return;
+        }
+
+        const nextPage = this.pageNavigator.resolvePage(options.nextPageId);
+        if (!nextPage) {
+            this.logger.warn(
+                `Next page with id "${options.nextPageId}" not found for chat ${options.chatId}`,
+            );
+            options.session.pageId = undefined;
+            await this.sessionManager.saveSession(options.chatId, options.session);
+            await this.persistenceGateway.updateStepStateCurrentPage(
+                options.database.stepState,
+                undefined,
+            );
+            return;
+        }
+
+        options.session.pageId = nextPage.id;
+        await this.sessionManager.saveSession(options.chatId, options.session);
+
+        const nextStepState =
+            await this.persistenceGateway.updateStepStateCurrentPage(
+                options.database.stepState,
+                nextPage.id,
+            );
+        if (nextStepState) {
+            options.database.stepState = nextStepState;
+        }
+
+        await this.pageNavigator.renderPage(
+            nextPage,
+            options.buildContext({ message: undefined, metadata: undefined }),
+        );
+    }
+
     private async resetToInitialPage(
         chatId: TelegramBot.ChatId,
         session: IChatSessionState,
@@ -382,10 +470,10 @@ export class BotRuntime {
         if (!initialPage) {
             session.pageId = undefined;
             await this.sessionManager.saveSession(chatId, session);
-            const database = await this.persistenceGateway.ensureDatabaseState(
+            const { database } = await this.prepareContext({
                 chatId,
                 session,
-            );
+            });
             await this.persistenceGateway.updateStepStateCurrentPage(
                 database.stepState,
                 undefined,
@@ -396,17 +484,13 @@ export class BotRuntime {
         session.pageId = initialPage.id;
         await this.sessionManager.saveSession(chatId, session);
 
-        const database = await this.persistenceGateway.ensureDatabaseState(
+        const { buildContext } = await this.prepareContext({
             chatId,
             session,
-            undefined,
-            initialPage.id,
-        );
+            pageId: initialPage.id,
+        });
 
-        await this.pageNavigator.renderPage(
-            initialPage,
-            this.createContext({ chatId, session, database }),
-        );
+        await this.pageNavigator.renderPage(initialPage, buildContext());
     }
 
     private createContext(options: IBuilderContextOptions): IBotBuilderContext {
