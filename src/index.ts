@@ -6,6 +6,7 @@ export {
     normalizeBotOptions,
 } from './builder/bot-runtime';
 export { PrismaService } from './prisma/prisma.service';
+export { PrismaStorage } from './prisma/prisma.storage';
 export {
     IBotBuilderModuleAsyncOptions,
     IBotBuilderOptions,
@@ -34,4 +35,13 @@ export {
     TBotPageMiddleware,
     TBotPageMiddlewareHandler,
     TBotPageMiddlewareHandlerResult,
+    TPrismaJsonValue,
+    IBotStorage,
+    IBotStorageState,
+    IBotStorageUser,
+    IBotStorageStepState,
+    IBotStorageEnsureOptions,
+    IBotStorageSaveProgressOptions,
+    IBotStorageUpdateCurrentPageOptions,
+    IBotStepHistoryEntry,
 } from './app.interface';

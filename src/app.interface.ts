@@ -11,24 +11,66 @@ export type TPrismaJsonValue =
     | { [key: string]: TPrismaJsonValue | null }
     | (TPrismaJsonValue | null)[];
 
-export interface IPrismaUser {
-    id: number;
-    telegramId: bigint;
-    chatId: string | null;
-    username: string | null;
-    firstName: string | null;
-    lastName: string | null;
-    languageCode: string | null;
+export interface IBotStorageUser {
+    id: number | string;
+    telegramId: bigint | number | string;
+    chatId: string | null | undefined;
+    username: string | null | undefined;
+    firstName: string | null | undefined;
+    lastName: string | null | undefined;
+    languageCode: string | null | undefined;
 }
 
-export interface IPrismaStepState {
-    id: number;
-    userId: number;
-    chatId: string;
+export interface IBotStorageStepState {
+    id: number | string;
+    userId: number | string;
+    chatId: string | null | undefined;
     slug: string;
-    currentPage: string | null;
+    currentPage: string | null | undefined;
     answers: unknown;
     history: unknown;
+}
+
+export interface IBotStepHistoryEntry {
+    pageId: string;
+    value: TPrismaJsonValue | null;
+    timestamp: string;
+}
+
+export interface IBotStorageState {
+    user?: IBotStorageUser;
+    stepState?: IBotStorageStepState;
+}
+
+export interface IBotStorageEnsureOptions {
+    chatId: string;
+    slug: string;
+    sessionState: IBotSessionState;
+    telegramUser: TelegramBot.User;
+    currentPageId?: string;
+}
+
+export interface IBotStorageSaveProgressOptions {
+    stepState: IBotStorageStepState;
+    pageId: string;
+    value: TPrismaJsonValue | null;
+    answers: Record<string, TPrismaJsonValue | null>;
+    history: IBotStepHistoryEntry[];
+}
+
+export interface IBotStorageUpdateCurrentPageOptions {
+    stepState: IBotStorageStepState;
+    pageId?: string;
+}
+
+export interface IBotStorage {
+    ensureState(options: IBotStorageEnsureOptions): Promise<IBotStorageState>;
+    saveStepProgress(
+        options: IBotStorageSaveProgressOptions,
+    ): Promise<IBotStorageStepState | undefined>;
+    updateCurrentPage(
+        options: IBotStorageUpdateCurrentPageOptions,
+    ): Promise<IBotStorageStepState | undefined>;
 }
 
 export type TBotPageIdentifier = string;
@@ -46,10 +88,8 @@ export interface IBotBuilderContext {
     session?: IBotSessionState;
     user?: TelegramBot.User;
     prisma?: PrismaService;
-    db?: {
-        user?: IPrismaUser;
-        stepState?: IPrismaStepState;
-    };
+    storage?: IBotStorage;
+    db?: IBotStorageState;
     services: Record<string, unknown>;
 }
 
@@ -189,6 +229,7 @@ export interface IBotBuilderOptions {
     initialPageId?: TBotPageIdentifier;
     sessionStorage?: IBotSessionStorage;
     prisma?: PrismaService;
+    storage?: IBotStorage | null;
     slug?: string;
     services?: Record<string, unknown>;
     pageMiddlewares?: IBotPageMiddlewareConfig[];

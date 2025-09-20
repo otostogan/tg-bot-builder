@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import TelegramBot = require('node-telegram-bot-api');
 import { PublisherService } from 'otostogan-nest-logger';
 import {
@@ -23,7 +23,7 @@ export class BuilderService {
 
     constructor(
         private readonly logger: PublisherService,
-        private readonly prismaService: PrismaService,
+        @Optional() private readonly prismaService?: PrismaService,
     ) {}
 
     public registerBots(
@@ -57,11 +57,7 @@ export class BuilderService {
             this.removeBot(existingByToken);
         }
 
-        const runtime = new BotRuntime(
-            options,
-            this.logger,
-            this.prismaService,
-        );
+        const runtime = new BotRuntime(options, this.logger, this.prismaService);
         this.bots.set(botId, runtime);
         this.botInstances.set(botId, runtime.bot);
         this.botOptions.set(botId, options);

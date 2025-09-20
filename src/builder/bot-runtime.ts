@@ -9,8 +9,11 @@ import {
     IBotPageMiddlewareResult,
     IBotSessionState,
     IBotSessionStorage,
-    IPrismaStepState,
-    IPrismaUser,
+    IBotStepHistoryEntry,
+    IBotStorage,
+    IBotStorageState,
+    IBotStorageStepState,
+    IBotStorageUser,
     TBotKeyboardMarkup,
     TBotPageContent,
     TBotPageContentResult,
@@ -20,6 +23,7 @@ import {
 } from '../app.interface';
 import { PublisherService } from 'otostogan-nest-logger';
 import { PrismaService } from '../prisma/prisma.service';
+import { PrismaStorage } from '../prisma/prisma.storage';
 import TelegramBot = require('node-telegram-bot-api');
 
 const DEFAULT_PAGE_MIDDLEWARE_REJECTION_MESSAGE =
@@ -40,16 +44,9 @@ interface IBuilderContextOptions {
     database?: IContextDatabaseState;
 }
 
-interface IContextDatabaseState {
-    user?: IPrismaUser;
-    stepState?: IPrismaStepState;
-}
+type IContextDatabaseState = IBotStorageState;
 
-interface IStepHistoryEntry {
-    pageId: string;
-    value: TPrismaJsonValue | null;
-    timestamp: string;
-}
+type IStepHistoryEntry = IBotStepHistoryEntry;
 
 interface IValidationResult {
     valid: boolean;
@@ -111,13 +108,14 @@ export class BotRuntime {
     private readonly sessionStorage: IBotSessionStorage<IChatSessionState>;
     private readonly sessionCache: Map<string, IChatSessionState> = new Map();
     private readonly prisma?: PrismaService;
+    private readonly storage?: IBotStorage;
     private readonly slug: string;
     private readonly helperServices: Record<string, unknown>;
 
     constructor(
         options: IBotRuntimeOptions,
         private readonly logger: PublisherService,
-        private readonly prismaService: PrismaService,
+        prismaService?: PrismaService,
     ) {
         this.id = options.id;
         this.token = options.TG_BOT_TOKEN;
@@ -154,6 +152,11 @@ export class BotRuntime {
         );
 
         this.prisma = options.prisma ?? prismaService;
+        if (Object.prototype.hasOwnProperty.call(options, 'storage')) {
+            this.storage = options.storage ?? undefined;
+        } else if (this.prisma) {
+            this.storage = new PrismaStorage(this.prisma);
+        }
         this.slug = options.slug ?? 'default';
         this.helperServices = options.services ?? {};
 
@@ -574,6 +577,7 @@ export class BotRuntime {
             session: options.session.data,
             user,
             prisma: this.prisma,
+            storage: this.storage,
             db: options.database,
             services: this.helperServices,
         };
@@ -676,7 +680,7 @@ export class BotRuntime {
         message?: TelegramBot.Message,
         currentPageId?: string,
     ): Promise<IContextDatabaseState> {
-        if (!this.prisma) {
+        if (!this.storage) {
             return {};
         }
 
@@ -685,84 +689,25 @@ export class BotRuntime {
             return {};
         }
 
-        const telegramId = this.normalizeTelegramId(telegramUser.id);
         const chatIdentifier = this.normalizeChatId(chatId);
-
-        const user = (await this.prisma.user.upsert({
-            where: { telegramId },
-            update: {
-                chatId: chatIdentifier,
-                username: telegramUser.username ?? undefined,
-                firstName: telegramUser.first_name ?? undefined,
-                lastName: telegramUser.last_name ?? undefined,
-                languageCode: telegramUser.language_code ?? undefined,
-            },
-            create: {
-                telegramId,
-                chatId: chatIdentifier,
-                username: telegramUser.username,
-                firstName: telegramUser.first_name,
-                lastName: telegramUser.last_name,
-                languageCode: telegramUser.language_code,
-            },
-        })) as unknown as IPrismaUser;
-
         const targetPageId = currentPageId ?? session.pageId;
+        const state = await this.storage.ensureState({
+            chatId: chatIdentifier,
+            slug: this.slug,
+            currentPageId: targetPageId,
+            sessionState: session.data ?? {},
+            telegramUser,
+        });
 
-        let stepState = (await this.prisma.stepState.findUnique({
-            where: {
-                userId_slug: {
-                    userId: user.id,
-                    slug: this.slug,
-                },
-            },
-        })) as unknown as IPrismaStepState | null;
-
-        if (!stepState) {
-            stepState = (await this.prisma.stepState.create({
-                data: {
-                    userId: user.id,
-                    chatId: chatIdentifier,
-                    slug: this.slug,
-                    currentPage: targetPageId ?? null,
-                    answers: this.serializeValue(session.data ?? {}),
-                    history: this.serializeValue([]),
-                },
-            })) as unknown as IPrismaStepState;
-        } else {
-            const updates: Record<string, unknown> = {};
-
-            if (stepState.chatId !== chatIdentifier) {
-                updates.chatId = chatIdentifier;
-            }
-
-            if (
-                targetPageId !== undefined &&
-                stepState.currentPage !== targetPageId
-            ) {
-                updates.currentPage = targetPageId;
-            }
-
-            if (Object.keys(updates).length > 0) {
-                stepState = (await this.prisma.stepState.update({
-                    where: { id: stepState.id },
-                    data: updates,
-                })) as unknown as IPrismaStepState;
-            }
-        }
-
-        return {
-            user,
-            stepState,
-        };
+        return state ?? {};
     }
 
     private async persistStepProgress(
-        stepState: IPrismaStepState | undefined,
+        stepState: IBotStorageStepState | undefined,
         pageId: string,
         value: unknown,
-    ): Promise<IPrismaStepState | undefined> {
-        if (!this.prisma || !stepState) {
+    ): Promise<IBotStorageStepState | undefined> {
+        if (!this.storage || !stepState) {
             return stepState;
         }
 
@@ -777,41 +722,20 @@ export class BotRuntime {
             timestamp: new Date().toISOString(),
         });
 
-        const updatedStepState = (await this.prisma.stepState.update({
-            where: { id: stepState.id },
-            data: {
-                answers,
-                history: JSON.stringify(history),
-            },
-        })) as unknown as IPrismaStepState;
-
-        await this.prisma.formEntry.upsert({
-            where: {
-                stepStateId_pageId: {
-                    stepStateId: updatedStepState.id,
-                    pageId,
-                },
-            },
-            update: {
-                payload: serializedValue,
-            },
-            create: {
-                userId: updatedStepState.userId,
-                stepStateId: updatedStepState.id,
-                slug: updatedStepState.slug,
-                pageId,
-                payload: serializedValue,
-            },
+        return await this.storage.saveStepProgress({
+            stepState,
+            pageId,
+            value: serializedValue,
+            answers,
+            history,
         });
-
-        return updatedStepState;
     }
 
     private async updateStepStateCurrentPage(
-        stepState: IPrismaStepState | undefined,
+        stepState: IBotStorageStepState | undefined,
         pageId: string | undefined,
-    ): Promise<IPrismaStepState | undefined> {
-        if (!this.prisma || !stepState) {
+    ): Promise<IBotStorageStepState | undefined> {
+        if (!this.storage || !stepState) {
             return stepState;
         }
 
@@ -820,12 +744,10 @@ export class BotRuntime {
             return stepState;
         }
 
-        return (await this.prisma.stepState.update({
-            where: { id: stepState.id },
-            data: {
-                currentPage: targetPage,
-            },
-        })) as unknown as IPrismaStepState;
+        return await this.storage.updateCurrentPage({
+            stepState,
+            pageId,
+        });
     }
 
     private normalizeAnswers(
@@ -841,11 +763,21 @@ export class BotRuntime {
     }
 
     private normalizeHistory(history: unknown): IStepHistoryEntry[] {
-        if (!Array.isArray(history)) {
+        let source = history;
+
+        if (typeof source === 'string') {
+            try {
+                source = JSON.parse(source) as unknown;
+            } catch {
+                return [];
+            }
+        }
+
+        if (!Array.isArray(source)) {
             return [];
         }
 
-        return history
+        return source
             .map((entry) =>
                 typeof entry === 'object' && entry !== null
                     ? (entry as Record<string, unknown>)
@@ -911,10 +843,6 @@ export class BotRuntime {
 
     private normalizeChatId(chatId: TelegramBot.ChatId): string {
         return typeof chatId === 'string' ? chatId : chatId.toString();
-    }
-
-    private normalizeTelegramId(id: number | string): bigint {
-        return typeof id === 'string' ? BigInt(id) : BigInt(id);
     }
 
     private async renderPage(
