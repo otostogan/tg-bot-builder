@@ -1,4 +1,7 @@
-import { IBotMiddlewareConfig, IBotMiddlewareContext } from '../../app.interface';
+import {
+    IBotMiddlewareConfig,
+    IBotMiddlewareContext,
+} from '../../app.interface';
 
 export interface BuildMiddlewarePipelineOptions<TArgs extends unknown[]> {
     event: IBotMiddlewareContext['event'];
@@ -13,7 +16,8 @@ export interface BuildMiddlewarePipelineOptions<TArgs extends unknown[]> {
 
 export const sortMiddlewareConfigs = <T extends { priority?: number }>(
     middlewares: T[] = [],
-): T[] => [...middlewares].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+): T[] =>
+    [...middlewares].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 
 export const mergeMiddlewareConfigs = (
     globalMiddlewares: IBotMiddlewareConfig[] = [],

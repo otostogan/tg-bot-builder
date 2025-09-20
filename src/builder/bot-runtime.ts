@@ -102,7 +102,9 @@ type ContextFactoryOverrides = Partial<
     Pick<IBuilderContextOptions, 'message' | 'metadata' | 'user'>
 >;
 
-type ContextFactory = (overrides?: ContextFactoryOverrides) => IBotBuilderContext;
+type ContextFactory = (
+    overrides?: ContextFactoryOverrides,
+) => IBotBuilderContext;
 
 export class BotRuntime {
     public readonly id: string;
@@ -469,7 +471,11 @@ export class BotRuntime {
         }
 
         const candidate = args[1];
-        if (!candidate || typeof candidate !== 'object' || candidate === message) {
+        if (
+            !candidate ||
+            typeof candidate !== 'object' ||
+            candidate === message
+        ) {
             return undefined;
         }
 
@@ -499,7 +505,9 @@ export class BotRuntime {
         return undefined;
     }
 
-    private extractChatIdFromValue(value: unknown): TelegramBot.ChatId | undefined {
+    private extractChatIdFromValue(
+        value: unknown,
+    ): TelegramBot.ChatId | undefined {
         if (!value || typeof value !== 'object') {
             return undefined;
         }
@@ -688,7 +696,10 @@ export class BotRuntime {
     }): Promise<void> {
         if (!options.nextPageId) {
             options.session.pageId = undefined;
-            await this.sessionManager.saveSession(options.chatId, options.session);
+            await this.sessionManager.saveSession(
+                options.chatId,
+                options.session,
+            );
             await this.persistenceGateway.updateStepStateCurrentPage(
                 options.database.stepState,
                 undefined,
@@ -702,7 +713,10 @@ export class BotRuntime {
                 `Next page with id "${options.nextPageId}" not found for chat ${options.chatId}`,
             );
             options.session.pageId = undefined;
-            await this.sessionManager.saveSession(options.chatId, options.session);
+            await this.sessionManager.saveSession(
+                options.chatId,
+                options.session,
+            );
             await this.persistenceGateway.updateStepStateCurrentPage(
                 options.database.stepState,
                 undefined,
