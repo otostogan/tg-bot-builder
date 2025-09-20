@@ -1155,22 +1155,49 @@ const keyboards = [
     },
 ];
 
+export interface ICreateUrbanMarketBotOptions
+    extends Partial<Omit<IBotBuilderOptions, 'TG_BOT_TOKEN'>> {}
+
+/**
+ * Creates a ready-to-use configuration for the demo Urban Market bot.
+ *
+ * Consumers can pass a Prisma service, custom storage, or any other runtime
+ * overrides through the `options` argument:
+ *
+ * ```ts
+ * const botOptions = createUrbanMarketBot(token, { prisma: prismaService });
+ * ```
+ */
 export const createUrbanMarketBot = (
     token: string,
-    overrides: Partial<IBotBuilderOptions> = {},
-): IBotBuilderOptions => ({
-    TG_BOT_TOKEN: token,
-    id: overrides.id ?? 'urban-market-dev',
-    slug: overrides.slug ?? 'urban-market-dev',
-    initialPageId: overrides.initialPageId ?? 'first-name',
-    services: {
-        catalog: catalogService,
-        ...(overrides.services ?? {}),
-    },
-    pageMiddlewares: [requireRegistrationMiddleware],
-    pages: [...registrationPages, ...catalogPages, ...productPages],
-    keyboards,
-    ...overrides,
-});
+    options: ICreateUrbanMarketBotOptions = {},
+): IBotBuilderOptions => {
+    const {
+        services,
+        pageMiddlewares,
+        pages,
+        keyboards: overrideKeyboards,
+        ...rest
+    } = options;
 
-export type { IUrbanMarketSession, UrbanMarketCatalogService };
+    return {
+        TG_BOT_TOKEN: token,
+        id: rest.id ?? 'urban-market-dev',
+        slug: rest.slug ?? 'urban-market-dev',
+        initialPageId: rest.initialPageId ?? 'first-name',
+        services: {
+            catalog: catalogService,
+            ...(services ?? {}),
+        },
+        pageMiddlewares:
+            pageMiddlewares ?? [requireRegistrationMiddleware],
+        pages: pages ?? [...registrationPages, ...catalogPages, ...productPages],
+        keyboards: overrideKeyboards ?? keyboards,
+        ...rest,
+    };
+};
+
+export type {
+    IUrbanMarketSession,
+    UrbanMarketCatalogService,
+};
