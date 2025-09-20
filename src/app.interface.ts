@@ -179,6 +179,30 @@ export interface IBotSessionStorage<TState = IBotSessionState> {
     delete?(chatId: TelegramBot.ChatId): Promise<void> | void;
 }
 
+export interface IBotRuntimeMessages {
+    runtimeInitialized(context: { id: string }): string;
+    botIdResolutionFailed(): string;
+    invalidHandler(): string;
+    handlerMissingListener(context: { event: string }): string;
+    pageNotFound(context: {
+        pageId: TBotPageIdentifier;
+        chatId: TelegramBot.ChatId;
+    }): string;
+    nextPageNotFound(context: {
+        pageId: TBotPageIdentifier;
+        chatId: TelegramBot.ChatId;
+    }): string;
+    messageHandlingError(context: { error?: unknown }): string;
+    middlewareError(context: {
+        event: keyof TelegramBot.TelegramEvents;
+        error?: unknown;
+    }): string;
+    noInitialPage(): string;
+    validationFailed(): string;
+}
+
+export type TBotRuntimeMessageOverrides = Partial<IBotRuntimeMessages>;
+
 export interface IBotBuilderOptions {
     TG_BOT_TOKEN: string;
     id?: string;
@@ -192,6 +216,11 @@ export interface IBotBuilderOptions {
     slug?: string;
     services?: Record<string, unknown>;
     pageMiddlewares?: IBotPageMiddlewareConfig[];
+    /**
+     * Override runtime messages to introduce custom localisation or phrasing for
+     * built-in validation and middleware feedback.
+     */
+    messages?: TBotRuntimeMessageOverrides;
 }
 
 export interface IBotBuilderModuleAsyncOptions

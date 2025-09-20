@@ -7,6 +7,11 @@ export {
     normalizeBotOptions,
 } from './builder/bot-runtime';
 export {
+    createBotRuntimeMessages,
+    DEFAULT_BOT_RUNTIME_MESSAGES,
+    BotRuntimeMessageFactory,
+} from './builder/builder.messages';
+export {
     PageNavigator,
     PageNavigatorFactoryOptions,
     IValidationResult,
@@ -54,6 +59,7 @@ export {
     IBotPageMiddlewareConfig,
     IBotPageMiddlewareResult,
     IBotPageNavigationOptions,
+    IBotRuntimeMessages,
     IBotSessionState,
     IBotSessionStorage,
     TBotKeyboardMarkup,
@@ -69,4 +75,5 @@ export {
     TBotPageMiddleware,
     TBotPageMiddlewareHandler,
     TBotPageMiddlewareHandlerResult,
+    TBotRuntimeMessageOverrides,
 } from './app.interface';

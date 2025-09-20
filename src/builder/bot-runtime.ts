@@ -8,11 +8,17 @@ import {
     IBotMiddlewareContext,
     IBotSessionState,
     IBotSessionStorage,
+    IBotRuntimeMessages,
     TBotPageIdentifier,
 } from '../app.interface';
 import { PublisherService } from 'otostogan-nest-logger';
 import TelegramBot = require('node-telegram-bot-api');
 import type { PrismaClient } from '@prisma/client/extension';
+import {
+    BotRuntimeMessageFactory,
+    DEFAULT_BOT_RUNTIME_MESSAGES,
+    createBotRuntimeMessages,
+} from './builder.messages';
 import {
     PageNavigator,
     PageNavigatorFactoryOptions,
@@ -50,6 +56,11 @@ export interface BotRuntimeDependencies {
     persistenceGatewayFactory?: (
         options: PersistenceGatewayFactoryOptions,
     ) => IPersistenceGateway;
+    /**
+     * Optional factory for building runtime messages. Use this to inject localisation-aware
+     * message builders while preserving defaults via {@link createBotRuntimeMessages}.
+     */
+    messageFactory?: BotRuntimeMessageFactory;
 }
 
 export function normalizeBotOptions(
@@ -73,7 +84,9 @@ export function normalizeBotOptions(
         (index !== undefined ? `bot-${index}` : undefined);
 
     if (!fallbackId) {
-        throw new Error('Bot identifier could not be resolved');
+        throw new Error(
+            DEFAULT_BOT_RUNTIME_MESSAGES.botIdResolutionFailed(),
+        );
     }
 
     return {
@@ -117,6 +130,7 @@ export class BotRuntime {
     private readonly persistenceGateway: IPersistenceGateway;
     private readonly helperServices: Record<string, unknown>;
     private readonly globalMiddlewares: IBotMiddlewareConfig[];
+    private readonly messages: IBotRuntimeMessages;
 
     constructor(
         options: IBotRuntimeOptions,
@@ -128,6 +142,10 @@ export class BotRuntime {
         this.token = options.TG_BOT_TOKEN;
         this.bot = new TelegramBot(this.token, { polling: true });
         this.logger = logger;
+
+        const messageFactory =
+            dependencies.messageFactory ?? createBotRuntimeMessages;
+        this.messages = messageFactory(options.messages);
 
         this.helperServices = options.services ?? {};
         this.globalMiddlewares = sortMiddlewareConfigs(
@@ -164,7 +182,9 @@ export class BotRuntime {
 
         this.pageNavigator.registerPages(options.pages ?? []);
 
-        this.logger.info(`BotBuilder runtime "${this.id}" initialized`);
+        this.logger.info(
+            this.messages.runtimeInitialized({ id: this.id }),
+        );
 
         this.registerHandlers(options.handlers ?? []);
     }
@@ -181,7 +201,10 @@ export class BotRuntime {
         const page = this.pageNavigator.resolvePage(pageId);
         if (!page) {
             this.logger.warn(
-                `Page with id "${pageId}" not found for chat ${chatId}`,
+                this.messages.pageNotFound({
+                    pageId,
+                    chatId,
+                }),
             );
             return;
         }
@@ -228,13 +251,15 @@ export class BotRuntime {
 
         for (const handler of handlers) {
             if (!handler || typeof handler.event !== 'string') {
-                this.logger.warn('Attempted to register an invalid handler');
+                this.logger.warn(this.messages.invalidHandler());
                 continue;
             }
 
             if (typeof handler.listener !== 'function') {
                 this.logger.warn(
-                    `Handler for event "${handler.event}" does not provide a listener`,
+                    this.messages.handlerMissingListener({
+                        event: String(handler.event),
+                    }),
                 );
                 continue;
             }
@@ -294,7 +319,10 @@ export class BotRuntime {
             const currentPage = this.pageNavigator.resolvePage(session.pageId);
             if (!currentPage) {
                 this.logger.warn(
-                    `Page with id "${session.pageId}" not found for chat ${chatId}`,
+                    this.messages.pageNotFound({
+                        pageId: session.pageId,
+                        chatId,
+                    }),
                 );
                 await this.resetToInitialPage(chatId, session);
                 return;
@@ -354,11 +382,9 @@ export class BotRuntime {
                 buildContext,
             });
         } catch (error) {
-            const message =
-                error instanceof Error
-                    ? `Error during message handling: ${error.message}`
-                    : 'Error during message handling';
-            this.logger.error(message);
+            this.logger.error(
+                this.messages.messageHandlingError({ error }),
+            );
         }
     };
 
@@ -415,12 +441,9 @@ export class BotRuntime {
         event: keyof TelegramBot.TelegramEvents,
         error: unknown,
     ): void {
-        const eventName = String(event);
-        const message =
-            error instanceof Error
-                ? `Error in middleware pipeline for event "${eventName}": ${error.message}`
-                : `Error in middleware pipeline for event "${eventName}"`;
-        this.logger.error(message);
+        this.logger.error(
+            this.messages.middlewareError({ event, error }),
+        );
     }
 
     private extractMessageFromArgs(
@@ -585,7 +608,7 @@ export class BotRuntime {
     }): Promise<void> {
         const initialPage = this.pageNavigator.resolveInitialPage();
         if (!initialPage) {
-            this.logger.warn('No initial page configured');
+            this.logger.warn(this.messages.noInitialPage());
             return;
         }
 
@@ -678,7 +701,7 @@ export class BotRuntime {
     }): Promise<void> {
         const errorMessage =
             options.errorMessage ??
-            'Введены некорректные данные, попробуйте ещё раз.';
+            this.messages.validationFailed();
 
         await this.bot.sendMessage(options.chatId, errorMessage);
         await this.pageNavigator.renderPage(
@@ -710,7 +733,10 @@ export class BotRuntime {
         const nextPage = this.pageNavigator.resolvePage(options.nextPageId);
         if (!nextPage) {
             this.logger.warn(
-                `Next page with id "${options.nextPageId}" not found for chat ${options.chatId}`,
+                this.messages.nextPageNotFound({
+                    pageId: options.nextPageId,
+                    chatId: options.chatId,
+                }),
             );
             options.session.pageId = undefined;
             await this.sessionManager.saveSession(
