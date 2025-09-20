@@ -23,7 +23,7 @@ import TelegramBot = require('node-telegram-bot-api');
 import type { PrismaClient } from '@prisma/client/extension';
 
 const DEFAULT_PAGE_MIDDLEWARE_REJECTION_MESSAGE =
-    'Доступ к этой странице запрещён.';
+    'Access to this page is denied..';
 
 interface IChatSessionState {
     pageId?: TBotPageIdentifier;
