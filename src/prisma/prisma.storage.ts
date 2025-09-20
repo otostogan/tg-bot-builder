@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import {
     IBotStorage,
     IBotStorageEnsureOptions,
@@ -10,9 +10,11 @@ import {
     TPrismaJsonValue,
 } from '../app.interface';
 
+type PrismaClientOptions = ConstructorParameters<typeof PrismaClient>[0];
+
 export interface IPrismaStorageOptions {
     client?: PrismaClient;
-    prismaClientOptions?: Prisma.PrismaClientOptions;
+    prismaClientOptions?: PrismaClientOptions;
     datasourceUrl?: string;
     autoMigrate?: boolean;
 }
@@ -36,14 +38,16 @@ export class PrismaStorage implements IBotStorage {
 
     constructor(options?: PrismaClient | IPrismaStorageOptions) {
         const normalizedOptions = this.normalizeOptions(options);
-        this.autoMigrate = normalizedOptions.autoMigrate ?? true;
+        this.autoMigrate = normalizedOptions.autoMigrate;
 
         if (normalizedOptions.client) {
             this.prisma = normalizedOptions.client;
             this.ownsClient = false;
         } else {
             const prismaOptions = this.mergePrismaOptions(normalizedOptions);
-            this.prisma = new PrismaClient(prismaOptions);
+            this.prisma = prismaOptions
+                ? new PrismaClient(prismaOptions)
+                : new PrismaClient();
             this.ownsClient = true;
         }
     }
@@ -92,8 +96,9 @@ export class PrismaStorage implements IBotStorage {
                     chatId: options.chatId,
                     slug: options.slug,
                     currentPage: targetPageId,
-                    answers: this.serializeValue(options.sessionState ?? {}),
-                    history: [] as Prisma.InputJsonValue,
+                    answers:
+                        this.serializeValue(options.sessionState ?? {}) ?? {},
+                    history: this.serializeValue([]) ?? [],
                 },
             })) as unknown as IBotStorageStepState;
         } else {
@@ -126,8 +131,8 @@ export class PrismaStorage implements IBotStorage {
     ): Promise<IBotStorageStepState | undefined> {
         await this.ensureReady();
 
-        const historyValue = (this.serializeValue(options.history) ?? []) as Prisma.InputJsonValue;
-        const answersValue = (this.serializeValue(options.answers) ?? {}) as Prisma.InputJsonValue;
+        const historyValue = this.serializeValue(options.history) ?? [];
+        const answersValue = this.serializeValue(options.answers) ?? {};
 
         const updatedStepState = (await this.prisma.stepState.update({
             where: { id: this.toNumber(options.stepState.id) },
@@ -225,42 +230,50 @@ export class PrismaStorage implements IBotStorage {
 
     private normalizeOptions(
         options?: PrismaClient | IPrismaStorageOptions,
-    ): Required<Omit<IPrismaStorageOptions, 'client'>> & {
+    ): {
         client?: PrismaClient;
+        prismaClientOptions?: PrismaClientOptions;
+        datasourceUrl?: string;
+        autoMigrate: boolean;
     } {
         if (isPrismaClient(options)) {
             return {
                 client: options,
-                prismaClientOptions: {},
+                prismaClientOptions: undefined,
                 datasourceUrl: undefined,
                 autoMigrate: true,
             };
         }
 
-        const normalized = options ?? {};
+        const normalized = (options ?? {}) as IPrismaStorageOptions;
 
         return {
             client: normalized.client,
-            prismaClientOptions: normalized.prismaClientOptions ?? {},
+            prismaClientOptions: normalized.prismaClientOptions,
             datasourceUrl: normalized.datasourceUrl,
             autoMigrate: normalized.autoMigrate ?? true,
         };
     }
 
     private mergePrismaOptions(
-        options: Required<Omit<IPrismaStorageOptions, 'client'>> & {
-            client?: PrismaClient;
+        options: {
+            prismaClientOptions?: PrismaClientOptions;
+            datasourceUrl?: string;
         },
-    ): Prisma.PrismaClientOptions {
-        const prismaOptions = { ...options.prismaClientOptions };
+    ): PrismaClientOptions | undefined {
+        const prismaOptions: PrismaClientOptions = {
+            ...(options.prismaClientOptions ?? {}),
+        };
 
         if (options.datasourceUrl) {
             prismaOptions.datasources = {
+                ...(prismaOptions.datasources ?? {}),
                 db: { url: options.datasourceUrl },
-            } as Prisma.PrismaClientOptions['datasources'];
+            };
+            prismaOptions.datasourceUrl = options.datasourceUrl;
         }
 
-        return prismaOptions;
+        return Object.keys(prismaOptions).length > 0 ? prismaOptions : undefined;
     }
 
     private async ensureReady(): Promise<void> {
