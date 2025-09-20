@@ -74,15 +74,7 @@ export class BuilderService {
             return;
         }
 
-        this.bots.delete(botId);
-        this.botInstances.delete(botId);
-        this.botOptions.delete(botId);
-
-        for (const [token, registeredBotId] of this.tokenToBotId.entries()) {
-            if (registeredBotId === botId) {
-                this.tokenToBotId.delete(token);
-            }
-        }
+        this.detachBot(botId, runtime);
 
         try {
             void runtime.bot.stopPolling();
@@ -93,5 +85,31 @@ export class BuilderService {
                     : `Failed to stop polling for bot "${botId}"`;
             this.logger.warn(message);
         }
+    }
+
+    private detachBot(botId: string, runtime: BotRuntime): void {
+        const options = this.botOptions.get(botId);
+        const token = options?.TG_BOT_TOKEN ?? runtime.token;
+
+        this.bots.delete(botId);
+        this.botInstances.delete(botId);
+        this.botOptions.delete(botId);
+
+        this.clearTokenMapping(token, botId);
+    }
+
+    private clearTokenMapping(token?: string, botId?: string): void {
+        if (!token) {
+            return;
+        }
+
+        if (botId) {
+            const registeredBotId = this.tokenToBotId.get(token);
+            if (registeredBotId !== botId) {
+                return;
+            }
+        }
+
+        this.tokenToBotId.delete(token);
     }
 }
