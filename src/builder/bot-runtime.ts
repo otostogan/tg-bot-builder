@@ -24,7 +24,7 @@ import {
 } from './runtime/session-manager';
 import {
     IContextDatabaseState,
-    PersistenceGateway,
+    IPersistenceGateway,
     PersistenceGatewayFactoryOptions,
 } from './runtime/persistence-gateway';
 import { createPageNavigator } from './runtime/page-navigator';
@@ -49,7 +49,7 @@ export interface BotRuntimeDependencies {
     ) => SessionManager;
     persistenceGatewayFactory?: (
         options: PersistenceGatewayFactoryOptions,
-    ) => PersistenceGateway;
+    ) => IPersistenceGateway;
 }
 
 export function normalizeBotOptions(
@@ -114,7 +114,7 @@ export class BotRuntime {
     private readonly logger: PublisherService;
     private readonly pageNavigator: PageNavigator;
     private readonly sessionManager: SessionManager;
-    private readonly persistenceGateway: PersistenceGateway;
+    private readonly persistenceGateway: IPersistenceGateway;
     private readonly helperServices: Record<string, unknown>;
     private readonly globalMiddlewares: IBotMiddlewareConfig[];
 

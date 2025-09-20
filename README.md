@@ -68,7 +68,7 @@ await builderService.goToPage('secondary', chatId, 'start');
 
 - `SessionManager` controls session retrieval and persistence.
 - `PageNavigator` resolves pages, keyboards and middleware execution.
-- `PersistenceGateway` encapsulates Prisma synchronization.
+- `PrismaPersistenceGateway` encapsulates Prisma synchronization through the `IPersistenceGateway` contract.
 
 All three services and their factory helpers are exported from the package for advanced scenarios:
 

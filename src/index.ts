@@ -24,7 +24,9 @@ export {
     createSessionManager,
 } from './builder/runtime/session-manager';
 export {
-    PersistenceGateway,
+    PrismaPersistenceGateway,
+    PrismaPersistenceGatewayOptions,
+    IPersistenceGateway,
     PersistenceGatewayFactoryOptions,
     IContextDatabaseState,
     createPersistenceGateway,
