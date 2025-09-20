@@ -1,6 +1,10 @@
 export { BotBuilder } from './app.module';
 export { BuilderService } from './builder/builder.service';
-export { BotRuntime, IBotRuntimeOptions, normalizeBotOptions } from './builder/bot-runtime';
+export {
+    BotRuntime,
+    IBotRuntimeOptions,
+    normalizeBotOptions,
+} from './builder/bot-runtime';
 export { PrismaService } from './prisma/prisma.service';
 export {
     IBotBuilderModuleAsyncOptions,

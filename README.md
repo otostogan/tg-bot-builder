@@ -40,18 +40,14 @@ import { BotBuilder } from 'tg-bot-builder';
             useFactory: () => ({
                 id: 'primary',
                 TG_BOT_TOKEN: process.env.PRIMARY_TOKEN!,
-                pages: [
-                    { id: 'start', content: 'Primary bot ready' },
-                ],
+                pages: [{ id: 'start', content: 'Primary bot ready' }],
             }),
         }),
         BotBuilder.forFeature([
             {
                 id: 'secondary',
                 TG_BOT_TOKEN: process.env.SECONDARY_TOKEN!,
-                pages: [
-                    { id: 'start', content: 'Secondary bot ready' },
-                ],
+                pages: [{ id: 'start', content: 'Secondary bot ready' }],
             },
         ]),
     ],
