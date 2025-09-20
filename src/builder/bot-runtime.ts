@@ -19,8 +19,8 @@ import {
     TPrismaJsonValue,
 } from '../app.interface';
 import { PublisherService } from 'otostogan-nest-logger';
-import type { PrismaClient } from '@prisma/client';
 import TelegramBot = require('node-telegram-bot-api');
+import type { PrismaClient } from '@prisma/client/extension';
 
 const DEFAULT_PAGE_MIDDLEWARE_REJECTION_MESSAGE =
     'Доступ к этой странице запрещён.';
@@ -257,30 +257,6 @@ export class BotRuntime {
         });
 
         await this.renderPage(page, context);
-    }
-
-    public async goToInitialPage(
-        chatId: TelegramBot.ChatId,
-        options?: IBotPageNavigationOptions,
-    ): Promise<void> {
-        const initialPage = this.resolveInitialPage();
-        if (!initialPage) {
-            this.logger.warn('No initial page configured');
-            return;
-        }
-
-        const navigationOptions: IBotPageNavigationOptions = {
-            ...options,
-        };
-
-        if (
-            navigationOptions.resetState === undefined &&
-            navigationOptions.state === undefined
-        ) {
-            navigationOptions.resetState = true;
-        }
-
-        await this.goToPage(chatId, initialPage.id, navigationOptions);
     }
 
     private registerHandlers(): void {

@@ -1,7 +1,7 @@
 import { ModuleMetadata } from '@nestjs/common';
 import type TelegramBot from 'node-telegram-bot-api';
 import type { AnySchema } from 'yup';
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client/extension';
 
 export type TPrismaJsonValue =
     | string

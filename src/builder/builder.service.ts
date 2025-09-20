@@ -1,19 +1,14 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import TelegramBot = require('node-telegram-bot-api');
 import { PublisherService } from 'otostogan-nest-logger';
-import {
-    IBotBuilderOptions,
-    IBotPage,
-    IBotPageNavigationOptions,
-    TBotPageIdentifier,
-} from '../app.interface';
-import type { PrismaClient } from '@prisma/client';
+import { IBotBuilderOptions } from '../app.interface';
 import {
     BotRuntime,
     IBotRuntimeOptions,
     normalizeBotOptions,
 } from './bot-runtime';
 import { BOT_BUILDER_PRISMA } from '../app.constants';
+import type { PrismaClient } from '@prisma/client/extension';
 
 @Injectable()
 export class BuilderService {
@@ -71,72 +66,6 @@ export class BuilderService {
         this.tokenToBotId.set(runtime.token, botId);
 
         return botId;
-    }
-
-    public getBot(botId: string): TelegramBot | undefined {
-        return this.botInstances.get(botId);
-    }
-
-    public getBotIdByToken(token: string): string | undefined {
-        return this.tokenToBotId.get(token);
-    }
-
-    public getRegisteredBotIds(): string[] {
-        return [...this.bots.keys()];
-    }
-
-    public getOptions(botId: string): IBotRuntimeOptions | undefined {
-        const options = this.botOptions.get(botId);
-        return options ? { ...options } : undefined;
-    }
-
-    public getAllOptions(): IBotRuntimeOptions[] {
-        return [...this.botOptions.values()].map((options) => ({ ...options }));
-    }
-
-    public registerPages(botId: string, pages: IBotPage[]): void {
-        const runtime = this.bots.get(botId);
-        if (!runtime) {
-            this.logger.warn(
-                `Attempted to register pages for unknown bot "${botId}"`,
-            );
-            return;
-        }
-
-        runtime.registerPages(pages);
-    }
-
-    public async goToPage(
-        botId: string,
-        chatId: TelegramBot.ChatId,
-        pageId: TBotPageIdentifier,
-        options?: IBotPageNavigationOptions,
-    ): Promise<void> {
-        const runtime = this.bots.get(botId);
-        if (!runtime) {
-            this.logger.warn(
-                `Cannot navigate to page "${pageId}". Bot "${botId}" is not registered.`,
-            );
-            return;
-        }
-
-        await runtime.goToPage(chatId, pageId, options);
-    }
-
-    public async goToInitialPage(
-        botId: string,
-        chatId: TelegramBot.ChatId,
-        options?: IBotPageNavigationOptions,
-    ): Promise<void> {
-        const runtime = this.bots.get(botId);
-        if (!runtime) {
-            this.logger.warn(
-                `Cannot navigate to initial page. Bot "${botId}" is not registered.`,
-            );
-            return;
-        }
-
-        await runtime.goToInitialPage(chatId, options);
     }
 
     private removeBot(botId: string): void {
