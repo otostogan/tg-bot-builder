@@ -90,6 +90,32 @@ const runtime = new BotRuntime(options, logger, prisma, {
 
 Providing custom factories allows full control over session storage, page rendering logic or database synchronization without modifying `BotRuntime` itself.
 
+### Serializing custom payloads
+
+Advanced integrations that persist form progress outside of Prisma can reuse the built-in serialization helpers exposed by the runtime layer. They normalize arbitrary payloads into JSON-friendly structures that match the format consumed by `PrismaPersistenceGateway`.
+
+```ts
+import {
+    normalizeAnswers,
+    normalizeHistory,
+    serializeValue,
+} from 'tg-bot-builder';
+
+const answers = normalizeAnswers(existingAnswersSnapshot);
+answers[currentPageId] = serializeValue(userInput);
+
+const history = normalizeHistory(existingHistorySnapshot);
+history.push({
+    pageId: currentPageId,
+    value: serializeValue(userInput),
+    timestamp: new Date().toISOString(),
+});
+
+await customRepository.save({ answers, history });
+```
+
+The helpers accept raw session data (including nested objects, arrays or bigint values) and guarantee deterministic JSON output, so external consumers can store responses in their preferred database without reimplementing BotBuilder's conversion rules.
+
 ## Project setup
 
 ```bash
