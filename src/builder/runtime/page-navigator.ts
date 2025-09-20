@@ -39,6 +39,10 @@ export class PageNavigator {
         string,
         IBotPageMiddlewareConfig
     >();
+    private readonly pageMiddlewaresCache = new Map<
+        string,
+        IBotPageMiddlewareConfig[]
+    >();
     private initialPageId?: TBotPageIdentifier;
 
     constructor(private readonly options: PageNavigatorOptions) {
@@ -88,6 +92,7 @@ export class PageNavigator {
             }
 
             this.pagesMap.set(page.id, page);
+            this.cachePageMiddlewares(page);
         }
 
         if (!this.initialPageId && this.pages.length > 0) {
@@ -281,8 +286,13 @@ export class PageNavigator {
     }
 
     private resolvePageMiddlewares(page: IBotPage): IBotPageMiddlewareConfig[] {
+        return this.pageMiddlewaresCache.get(page.id) ?? [];
+    }
+
+    private cachePageMiddlewares(page: IBotPage): void {
         if (!page.middlewares || page.middlewares.length === 0) {
-            return [];
+            this.pageMiddlewaresCache.delete(page.id);
+            return;
         }
 
         const resolved: IBotPageMiddlewareConfig[] = [];
@@ -304,7 +314,8 @@ export class PageNavigator {
             resolved.push(middleware);
         }
 
-        return resolved.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+        resolved.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+        this.pageMiddlewaresCache.set(page.id, resolved);
     }
 
     private normalizePageMiddlewareResult(

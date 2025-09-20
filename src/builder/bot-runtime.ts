@@ -3,6 +3,9 @@ import {
     IBotBuilderOptions,
     IBotPage,
     IBotPageNavigationOptions,
+    IBotHandler,
+    IBotMiddlewareConfig,
+    IBotMiddlewareContext,
     IBotSessionState,
     IBotSessionStorage,
     TBotPageIdentifier,
@@ -27,6 +30,11 @@ import {
 import { createPageNavigator } from './runtime/page-navigator';
 import { createSessionManager } from './runtime/session-manager';
 import { createPersistenceGateway } from './runtime/persistence-gateway';
+import {
+    buildMiddlewarePipeline,
+    mergeMiddlewareConfigs,
+    sortMiddlewareConfigs,
+} from './runtime/middleware-pipeline';
 
 export interface IBotRuntimeOptions extends IBotBuilderOptions {
     id: string;
@@ -94,7 +102,9 @@ type ContextFactoryOverrides = Partial<
     Pick<IBuilderContextOptions, 'message' | 'metadata' | 'user'>
 >;
 
-type ContextFactory = (overrides?: ContextFactoryOverrides) => IBotBuilderContext;
+type ContextFactory = (
+    overrides?: ContextFactoryOverrides,
+) => IBotBuilderContext;
 
 export class BotRuntime {
     public readonly id: string;
@@ -106,6 +116,7 @@ export class BotRuntime {
     private readonly sessionManager: SessionManager;
     private readonly persistenceGateway: PersistenceGateway;
     private readonly helperServices: Record<string, unknown>;
+    private readonly globalMiddlewares: IBotMiddlewareConfig[];
 
     constructor(
         options: IBotRuntimeOptions,
@@ -119,6 +130,9 @@ export class BotRuntime {
         this.logger = logger;
 
         this.helperServices = options.services ?? {};
+        this.globalMiddlewares = sortMiddlewareConfigs(
+            options.middlewares ?? [],
+        );
 
         const providedSessionStorage = options.sessionStorage as
             | IBotSessionStorage<IChatSessionState | IBotSessionState>
@@ -152,7 +166,7 @@ export class BotRuntime {
 
         this.logger.info(`BotBuilder runtime "${this.id}" initialized`);
 
-        this.registerHandlers();
+        this.registerHandlers(options.handlers ?? []);
     }
 
     public registerPages(pages: IBotPage[]): void {
@@ -205,8 +219,53 @@ export class BotRuntime {
         await this.pageNavigator.renderPage(page, buildContext());
     }
 
-    private registerHandlers(): void {
+    private registerHandlers(handlers: IBotHandler[] = []): void {
         this.bot.on('message', this.handleMessage);
+
+        if (!Array.isArray(handlers) || handlers.length === 0) {
+            return;
+        }
+
+        for (const handler of handlers) {
+            if (!handler || typeof handler.event !== 'string') {
+                this.logger.warn('Attempted to register an invalid handler');
+                continue;
+            }
+
+            if (typeof handler.listener !== 'function') {
+                this.logger.warn(
+                    `Handler for event "${handler.event}" does not provide a listener`,
+                );
+                continue;
+            }
+
+            const handlerMiddlewares = sortMiddlewareConfigs(
+                handler.middlewares ?? [],
+            );
+            const combinedMiddlewares = mergeMiddlewareConfigs(
+                this.globalMiddlewares,
+                handlerMiddlewares,
+            );
+
+            const pipeline = buildMiddlewarePipeline<
+                Parameters<typeof handler.listener>
+            >({
+                event: handler.event,
+                middlewares: combinedMiddlewares,
+                handler: async (...args) => {
+                    await Promise.resolve(handler.listener(...args));
+                },
+                contextFactory: (event, args) =>
+                    this.buildMiddlewareContext(event, args as unknown[]),
+                onError: (error) =>
+                    this.logMiddlewareError(handler.event, error),
+            });
+
+            this.bot.on(
+                handler.event,
+                pipeline as TelegramBot.TelegramEvents[typeof handler.event],
+            );
+        }
     }
 
     private readonly handleMessage = async (
@@ -302,6 +361,221 @@ export class BotRuntime {
             this.logger.error(message);
         }
     };
+
+    private async buildMiddlewareContext(
+        event: keyof TelegramBot.TelegramEvents,
+        args: unknown[],
+    ): Promise<IBotMiddlewareContext> {
+        const message = this.extractMessageFromArgs(args);
+        const metadata = this.extractMetadataFromArgs(args, message);
+        const user = this.resolveUserFromArgs(args, message);
+        const chatId = this.resolveChatIdFromArgs(args, message, user);
+
+        if (chatId !== undefined) {
+            const session = await this.sessionManager.getSession(chatId);
+            if (user) {
+                session.user = user;
+            }
+
+            const { database, buildContext } = await this.prepareContext({
+                chatId,
+                session,
+                message,
+                metadata,
+                user,
+            });
+
+            const context = buildContext({ message, metadata, user });
+
+            return {
+                ...context,
+                db: database,
+                event,
+                args,
+            };
+        }
+
+        return {
+            botId: this.id,
+            bot: this.bot,
+            chatId: 'unknown' as TelegramBot.ChatId,
+            message,
+            metadata,
+            session: undefined,
+            user,
+            prisma: this.persistenceGateway.prisma,
+            db: undefined,
+            services: this.helperServices,
+            event,
+            args,
+        };
+    }
+
+    private logMiddlewareError(
+        event: keyof TelegramBot.TelegramEvents,
+        error: unknown,
+    ): void {
+        const eventName = String(event);
+        const message =
+            error instanceof Error
+                ? `Error in middleware pipeline for event "${eventName}": ${error.message}`
+                : `Error in middleware pipeline for event "${eventName}"`;
+        this.logger.error(message);
+    }
+
+    private extractMessageFromArgs(
+        args: unknown[],
+    ): TelegramBot.Message | undefined {
+        for (const arg of args) {
+            const message = this.findMessageInValue(arg);
+            if (message) {
+                return message;
+            }
+        }
+
+        return undefined;
+    }
+
+    private findMessageInValue(
+        value: unknown,
+        visited = new Set<unknown>(),
+    ): TelegramBot.Message | undefined {
+        if (!value || typeof value !== 'object') {
+            return undefined;
+        }
+
+        if (visited.has(value)) {
+            return undefined;
+        }
+        visited.add(value);
+
+        const record = value as Record<string, unknown>;
+
+        if ('message_id' in record && 'chat' in record) {
+            return value as TelegramBot.Message;
+        }
+
+        if ('message' in record) {
+            return this.findMessageInValue(record.message, visited);
+        }
+
+        return undefined;
+    }
+
+    private extractMetadataFromArgs(
+        args: unknown[],
+        message?: TelegramBot.Message,
+    ): TelegramBot.Metadata | undefined {
+        if (args.length < 2) {
+            return undefined;
+        }
+
+        const candidate = args[1];
+        if (
+            !candidate ||
+            typeof candidate !== 'object' ||
+            candidate === message
+        ) {
+            return undefined;
+        }
+
+        return candidate as TelegramBot.Metadata;
+    }
+
+    private resolveChatIdFromArgs(
+        args: unknown[],
+        message?: TelegramBot.Message,
+        user?: TelegramBot.User,
+    ): TelegramBot.ChatId | undefined {
+        if (message?.chat?.id !== undefined) {
+            return message.chat.id;
+        }
+
+        for (const arg of args) {
+            const chatId = this.extractChatIdFromValue(arg);
+            if (chatId !== undefined) {
+                return chatId;
+            }
+        }
+
+        if (user?.id !== undefined) {
+            return user.id;
+        }
+
+        return undefined;
+    }
+
+    private extractChatIdFromValue(
+        value: unknown,
+    ): TelegramBot.ChatId | undefined {
+        if (!value || typeof value !== 'object') {
+            return undefined;
+        }
+
+        const record = value as Record<string, unknown>;
+
+        if ('chat' in record) {
+            const chat = record.chat as { id?: TelegramBot.ChatId } | undefined;
+            if (chat && chat.id !== undefined) {
+                return chat.id;
+            }
+        }
+
+        if ('message' in record) {
+            const nested = this.extractChatIdFromValue(record.message);
+            if (nested !== undefined) {
+                return nested;
+            }
+        }
+
+        if ('from' in record) {
+            const from = record.from as { id?: TelegramBot.ChatId } | undefined;
+            if (from && from.id !== undefined) {
+                return from.id;
+            }
+        }
+
+        return undefined;
+    }
+
+    private resolveUserFromArgs(
+        args: unknown[],
+        message?: TelegramBot.Message,
+    ): TelegramBot.User | undefined {
+        if (message?.from) {
+            return message.from;
+        }
+
+        for (const arg of args) {
+            const user = this.extractUserFromValue(arg);
+            if (user) {
+                return user;
+            }
+        }
+
+        return undefined;
+    }
+
+    private extractUserFromValue(value: unknown): TelegramBot.User | undefined {
+        if (!value || typeof value !== 'object') {
+            return undefined;
+        }
+
+        const record = value as Record<string, unknown>;
+
+        if ('from' in record) {
+            const from = record.from as TelegramBot.User | undefined;
+            if (from) {
+                return from;
+            }
+        }
+
+        if ('message' in record) {
+            return this.extractUserFromValue(record.message);
+        }
+
+        return undefined;
+    }
 
     private async startFromInitialPage(options: {
         chatId: TelegramBot.ChatId;
@@ -422,7 +696,10 @@ export class BotRuntime {
     }): Promise<void> {
         if (!options.nextPageId) {
             options.session.pageId = undefined;
-            await this.sessionManager.saveSession(options.chatId, options.session);
+            await this.sessionManager.saveSession(
+                options.chatId,
+                options.session,
+            );
             await this.persistenceGateway.updateStepStateCurrentPage(
                 options.database.stepState,
                 undefined,
@@ -436,7 +713,10 @@ export class BotRuntime {
                 `Next page with id "${options.nextPageId}" not found for chat ${options.chatId}`,
             );
             options.session.pageId = undefined;
-            await this.sessionManager.saveSession(options.chatId, options.session);
+            await this.sessionManager.saveSession(
+                options.chatId,
+                options.session,
+            );
             await this.persistenceGateway.updateStepStateCurrentPage(
                 options.database.stepState,
                 undefined,
