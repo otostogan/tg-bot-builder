@@ -7,6 +7,10 @@ export {
 } from './builder/bot-runtime';
 export { PrismaService } from './prisma/prisma.service';
 export {
+    BOT_BUILDER_MODULE_OPTIONS,
+    BOT_BUILDER_PRISMA,
+} from './app.constants';
+export {
     IBotBuilderModuleAsyncOptions,
     IBotBuilderOptions,
     IBotBuilderContext,

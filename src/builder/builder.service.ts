@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import TelegramBot = require('node-telegram-bot-api');
 import { PublisherService } from 'otostogan-nest-logger';
 import {
@@ -7,12 +7,13 @@ import {
     IBotPageNavigationOptions,
     TBotPageIdentifier,
 } from '../app.interface';
-import { PrismaService } from '../prisma/prisma.service';
+import type { PrismaClient } from '@prisma/client';
 import {
     BotRuntime,
     IBotRuntimeOptions,
     normalizeBotOptions,
 } from './bot-runtime';
+import { BOT_BUILDER_PRISMA } from '../app.constants';
 
 @Injectable()
 export class BuilderService {
@@ -23,7 +24,9 @@ export class BuilderService {
 
     constructor(
         private readonly logger: PublisherService,
-        private readonly prismaService: PrismaService,
+        @Optional()
+        @Inject(BOT_BUILDER_PRISMA)
+        private readonly prismaService?: PrismaClient,
     ) {}
 
     public registerBots(

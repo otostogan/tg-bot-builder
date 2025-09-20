@@ -19,7 +19,7 @@ import {
     TPrismaJsonValue,
 } from '../app.interface';
 import { PublisherService } from 'otostogan-nest-logger';
-import { PrismaService } from '../prisma/prisma.service';
+import type { PrismaClient } from '@prisma/client';
 import TelegramBot = require('node-telegram-bot-api');
 
 const DEFAULT_PAGE_MIDDLEWARE_REJECTION_MESSAGE =
@@ -110,14 +110,14 @@ export class BotRuntime {
     private initialPageId?: TBotPageIdentifier;
     private readonly sessionStorage: IBotSessionStorage<IChatSessionState>;
     private readonly sessionCache: Map<string, IChatSessionState> = new Map();
-    private readonly prisma?: PrismaService;
+    private readonly prisma?: PrismaClient;
     private readonly slug: string;
     private readonly helperServices: Record<string, unknown>;
 
     constructor(
         options: IBotRuntimeOptions,
         private readonly logger: PublisherService,
-        private readonly prismaService: PrismaService,
+        private readonly prismaService?: PrismaClient,
     ) {
         this.id = options.id;
         this.token = options.TG_BOT_TOKEN;
