@@ -22,6 +22,10 @@ export class SessionManager {
 
     private readonly sessionCache = new Map<string, IChatSessionState>();
 
+    /**
+     * Initializes the session manager with either the provided storage backend
+     * or an in-memory fallback.
+     */
     constructor(options: SessionManagerOptions = {}) {
         this.sessionStorage =
             options.sessionStorage ??
@@ -30,6 +34,10 @@ export class SessionManager {
             >);
     }
 
+    /**
+     * Retrieves a chat session from cache or storage, normalizing legacy data
+     * formats into the unified structure.
+     */
     public async getSession(
         chatId: TelegramBot.ChatId,
     ): Promise<IChatSessionState> {
@@ -49,6 +57,9 @@ export class SessionManager {
         return session;
     }
 
+    /**
+     * Persists the provided session state and updates the in-memory cache.
+     */
     public async saveSession(
         chatId: TelegramBot.ChatId,
         session: IChatSessionState,
@@ -58,6 +69,10 @@ export class SessionManager {
         await this.sessionStorage.set(chatId, session);
     }
 
+    /**
+     * Removes the chat session from cache and underlying storage when
+     * supported by the backend.
+     */
     public async deleteSession(chatId: TelegramBot.ChatId): Promise<void> {
         const key = chatId.toString();
         this.sessionCache.delete(key);
@@ -66,6 +81,10 @@ export class SessionManager {
         }
     }
 
+    /**
+     * Transforms stored session representations into the shape expected by the
+     * runtime, supporting both legacy and new formats.
+     */
     private normalizeSessionState(
         stored?: IChatSessionState | IBotSessionState | null,
     ): IChatSessionState | undefined {
@@ -88,6 +107,9 @@ export class SessionManager {
         return undefined;
     }
 
+    /**
+     * Type guard that identifies already-normalized chat session states.
+     */
     private isChatSessionState(value: unknown): value is IChatSessionState {
         return (
             typeof value === 'object' &&
@@ -97,12 +119,20 @@ export class SessionManager {
         );
     }
 
+    /**
+     * Type guard distinguishing plain session state objects persisted by older
+     * builder versions.
+     */
     private isSessionState(value: unknown): value is IBotSessionState {
         return (
             typeof value === 'object' && value !== null && !Array.isArray(value)
         );
     }
 
+    /**
+     * Provides a minimal in-memory session storage implementation used when no
+     * external storage is supplied.
+     */
     private createDefaultSessionStorage(): IBotSessionStorage<IChatSessionState> {
         const store = new Map<string, IChatSessionState>();
         return {
@@ -119,6 +149,9 @@ export class SessionManager {
 
 export interface SessionManagerFactoryOptions extends SessionManagerOptions {}
 
+/**
+ * Factory that builds the default session manager instance.
+ */
 export const createSessionManager = (
     options: SessionManagerFactoryOptions = {},
 ): SessionManager => new SessionManager(options);

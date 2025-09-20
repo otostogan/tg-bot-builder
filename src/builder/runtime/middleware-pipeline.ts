@@ -14,11 +14,19 @@ export interface BuildMiddlewarePipelineOptions<TArgs extends unknown[]> {
     onError?: (error: unknown) => void;
 }
 
+/**
+ * Returns a new list of middleware configs sorted by descending priority so
+ * higher-priority entries execute earlier.
+ */
 export const sortMiddlewareConfigs = <T extends { priority?: number }>(
     middlewares: T[] = [],
 ): T[] =>
     [...middlewares].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 
+/**
+ * Merges global and handler-level middleware configurations while preserving
+ * relative priority ordering between both sources.
+ */
 export const mergeMiddlewareConfigs = (
     globalMiddlewares: IBotMiddlewareConfig[] = [],
     handlerMiddlewares: IBotMiddlewareConfig[] = [],
@@ -68,6 +76,10 @@ export const mergeMiddlewareConfigs = (
     return result;
 };
 
+/**
+ * Builds an executable pipeline that invokes configured middlewares before the
+ * target handler, propagating a shared context and error hook.
+ */
 export const buildMiddlewarePipeline = <TArgs extends unknown[]>(
     options: BuildMiddlewarePipelineOptions<TArgs>,
 ) => {

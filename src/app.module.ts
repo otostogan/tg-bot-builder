@@ -14,6 +14,10 @@ const BOT_BUILDER_BOTS_REGISTRATION = Symbol('BOT_BUILDER_BOTS_REGISTRATION');
 
 @Module({})
 export class BotBuilder {
+    /**
+     * Configures the builder module for asynchronous initialization, wiring
+     * factories that register bots once dependencies resolve.
+     */
     static forRootAsync(options: IBotBuilderModuleAsyncOptions): DynamicModule {
         const asyncOptions = this.createAsyncOptionsProvider(options);
         const botsRegistration = this.createBotsRegistrationProvider();
@@ -37,6 +41,10 @@ export class BotBuilder {
         };
     }
 
+    /**
+     * Registers additional bot configurations in feature modules using the
+     * shared builder service.
+     */
     static forFeature(
         options: IBotBuilderOptions | IBotBuilderOptions[],
     ): DynamicModule {
@@ -58,6 +66,10 @@ export class BotBuilder {
         };
     }
 
+    /**
+     * Creates a provider that resolves module options through the consumer's
+     * asynchronous factory.
+     */
     private static createAsyncOptionsProvider(
         options: IBotBuilderModuleAsyncOptions,
     ): Provider {
@@ -71,6 +83,10 @@ export class BotBuilder {
         };
     }
 
+    /**
+     * Sets up a provider responsible for bootstrapping bot runtimes once the
+     * builder service and configuration are available.
+     */
     private static createBotsRegistrationProvider(): Provider {
         return {
             provide: BOT_BUILDER_BOTS_REGISTRATION,
@@ -85,6 +101,10 @@ export class BotBuilder {
         };
     }
 
+    /**
+     * Supplies the Prisma client from whichever bot configuration declares it,
+     * allowing downstream injections to reuse the instance.
+     */
     private static createPrismaProvider(): Provider {
         return {
             provide: BOT_BUILDER_PRISMA,
@@ -94,6 +114,10 @@ export class BotBuilder {
         };
     }
 
+    /**
+     * Normalizes incoming builder options, accepting both builder and runtime
+     * shapes while ensuring each entry has resolved defaults.
+     */
     private static normalizeOptions(
         options:
             | IBotBuilderOptions
