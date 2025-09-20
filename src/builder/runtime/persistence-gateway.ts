@@ -18,16 +18,70 @@ export interface IContextDatabaseState {
     stepState?: IPrismaStepState;
 }
 
-export interface PersistenceGatewayOptions {
+export interface PersistenceGatewayFactoryOptions {
     prisma?: PrismaClient;
     slug: string;
 }
 
-export class PersistenceGateway {
-    constructor(private readonly options: PersistenceGatewayOptions) {}
+/**
+ * Describes the persistence gateway contract consumed by {@link BotRuntime}.
+ *
+ * Implementations are expected to work with Prisma models named `user`,
+ * `stepState` and `formEntry` that are compatible with the
+ * {@link IPrismaUser} and {@link IPrismaStepState} interfaces defined in this
+ * package.
+ */
+export interface IPersistenceGateway {
+    readonly prisma?: PrismaClient;
+    ensureDatabaseState(
+        chatId: TelegramBot.ChatId,
+        session: IChatSessionState,
+        message?: TelegramBot.Message,
+        currentPageId?: string,
+    ): Promise<IContextDatabaseState>;
+    persistStepProgress(
+        stepState: IPrismaStepState | undefined,
+        pageId: string,
+        value: unknown,
+    ): Promise<IPrismaStepState | undefined>;
+    updateStepStateCurrentPage(
+        stepState: IPrismaStepState | undefined,
+        pageId: string | undefined,
+    ): Promise<IPrismaStepState | undefined>;
+}
 
-    public get prisma(): PrismaClient | undefined {
-        return this.options.prisma;
+class NoopPersistenceGateway implements IPersistenceGateway {
+    public readonly prisma = undefined;
+
+    public async ensureDatabaseState(): Promise<IContextDatabaseState> {
+        return {};
+    }
+
+    public async persistStepProgress(
+        stepState: IPrismaStepState | undefined,
+    ): Promise<IPrismaStepState | undefined> {
+        return stepState;
+    }
+
+    public async updateStepStateCurrentPage(
+        stepState: IPrismaStepState | undefined,
+    ): Promise<IPrismaStepState | undefined> {
+        return stepState;
+    }
+}
+
+export interface PrismaPersistenceGatewayOptions {
+    prisma: PrismaClient;
+    slug: string;
+}
+
+export class PrismaPersistenceGateway implements IPersistenceGateway {
+    public readonly prisma: PrismaClient;
+    private readonly slug: string;
+
+    constructor(options: PrismaPersistenceGatewayOptions) {
+        this.prisma = options.prisma;
+        this.slug = options.slug;
     }
 
     public async ensureDatabaseState(
@@ -36,11 +90,6 @@ export class PersistenceGateway {
         message?: TelegramBot.Message,
         currentPageId?: string,
     ): Promise<IContextDatabaseState> {
-        const prisma = this.options.prisma;
-        if (!prisma) {
-            return {};
-        }
-
         const telegramUser = message?.from ?? session.user;
         if (!telegramUser) {
             return {};
@@ -49,7 +98,7 @@ export class PersistenceGateway {
         const telegramId = this.normalizeTelegramId(telegramUser.id);
         const chatIdentifier = this.normalizeChatId(chatId);
 
-        const user = (await prisma.user.upsert({
+        const user = (await this.prisma.user.upsert({
             where: { telegramId },
             update: {
                 chatId: chatIdentifier,
@@ -70,21 +119,21 @@ export class PersistenceGateway {
 
         const targetPageId = currentPageId ?? session.pageId;
 
-        let stepState = (await prisma.stepState.findUnique({
+        let stepState = (await this.prisma.stepState.findUnique({
             where: {
                 userId_slug: {
                     userId: user.id,
-                    slug: this.options.slug,
+                    slug: this.slug,
                 },
             },
         })) as unknown as IPrismaStepState | null;
 
         if (!stepState) {
-            stepState = (await prisma.stepState.create({
+            stepState = (await this.prisma.stepState.create({
                 data: {
                     userId: user.id,
                     chatId: chatIdentifier,
-                    slug: this.options.slug,
+                    slug: this.slug,
                     currentPage: targetPageId ?? null,
                     answers: this.serializeValue(session.data ?? {}),
                     history: this.serializeValue([]),
@@ -97,15 +146,12 @@ export class PersistenceGateway {
                 updates.chatId = chatIdentifier;
             }
 
-            if (
-                targetPageId !== undefined &&
-                stepState.currentPage !== targetPageId
-            ) {
+            if (targetPageId !== undefined && stepState.currentPage !== targetPageId) {
                 updates.currentPage = targetPageId;
             }
 
             if (Object.keys(updates).length > 0) {
-                stepState = (await prisma.stepState.update({
+                stepState = (await this.prisma.stepState.update({
                     where: { id: stepState.id },
                     data: updates,
                 })) as unknown as IPrismaStepState;
@@ -123,8 +169,7 @@ export class PersistenceGateway {
         pageId: string,
         value: unknown,
     ): Promise<IPrismaStepState | undefined> {
-        const prisma = this.options.prisma;
-        if (!prisma || !stepState) {
+        if (!stepState) {
             return stepState;
         }
 
@@ -139,7 +184,7 @@ export class PersistenceGateway {
             timestamp: new Date().toISOString(),
         });
 
-        const updatedStepState = (await prisma.stepState.update({
+        const updatedStepState = (await this.prisma.stepState.update({
             where: { id: stepState.id },
             data: {
                 answers,
@@ -147,7 +192,7 @@ export class PersistenceGateway {
             },
         })) as unknown as IPrismaStepState;
 
-        await prisma.formEntry.upsert({
+        await this.prisma.formEntry.upsert({
             where: {
                 stepStateId_pageId: {
                     stepStateId: updatedStepState.id,
@@ -173,8 +218,7 @@ export class PersistenceGateway {
         stepState: IPrismaStepState | undefined,
         pageId: string | undefined,
     ): Promise<IPrismaStepState | undefined> {
-        const prisma = this.options.prisma;
-        if (!prisma || !stepState) {
+        if (!stepState) {
             return stepState;
         }
 
@@ -183,7 +227,7 @@ export class PersistenceGateway {
             return stepState;
         }
 
-        return (await prisma.stepState.update({
+        return (await this.prisma.stepState.update({
             where: { id: stepState.id },
             data: {
                 currentPage: targetPage,
@@ -255,9 +299,7 @@ export class PersistenceGateway {
         }
 
         if (Array.isArray(value)) {
-            return value.map((item) =>
-                this.serializeValue(item),
-            ) as TPrismaJsonValue;
+            return value.map((item) => this.serializeValue(item)) as TPrismaJsonValue;
         }
 
         if (typeof value === 'object') {
@@ -281,9 +323,15 @@ export class PersistenceGateway {
     }
 }
 
-export interface PersistenceGatewayFactoryOptions
-    extends PersistenceGatewayOptions {}
-
 export const createPersistenceGateway = (
     options: PersistenceGatewayFactoryOptions,
-): PersistenceGateway => new PersistenceGateway(options);
+): IPersistenceGateway => {
+    if (!options.prisma) {
+        return new NoopPersistenceGateway();
+    }
+
+    return new PrismaPersistenceGateway({
+        prisma: options.prisma,
+        slug: options.slug,
+    });
+};
