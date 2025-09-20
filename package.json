@@ -1,6 +1,6 @@
 {
     "name": "tg-bot-builder",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
     "description": "",
@@ -9,7 +9,8 @@
     "private": false,
     "scripts": {
         "build": "tsc",
-        "distribute": "npm run build && npm publish"
+        "distribute": "npm run build && npm publish",
+        "p": "npx prettier . --write"
     },
     "repository": {
         "type": "git",

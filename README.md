@@ -62,6 +62,34 @@ await builderService.goToInitialPage('primary', chatId);
 await builderService.goToPage('secondary', chatId, 'start');
 ```
 
+### Runtime customization
+
+`BotRuntime` now composes its behavior from three dedicated services:
+
+- `SessionManager` controls session retrieval and persistence.
+- `PageNavigator` resolves pages, keyboards and middleware execution.
+- `PersistenceGateway` encapsulates Prisma synchronization.
+
+All three services and their factory helpers are exported from the package for advanced scenarios:
+
+```ts
+import {
+    BotRuntime,
+    createSessionManager,
+    createPageNavigator,
+    createPersistenceGateway,
+} from 'tg-bot-builder';
+
+const runtime = new BotRuntime(options, logger, prisma, {
+    sessionManagerFactory: ({ sessionStorage }) =>
+        createSessionManager({ sessionStorage }),
+    pageNavigatorFactory: (deps) => createPageNavigator(deps),
+    persistenceGatewayFactory: (deps) => createPersistenceGateway(deps),
+});
+```
+
+Providing custom factories allows full control over session storage, page rendering logic or database synchronization without modifying `BotRuntime` itself.
+
 ## Project setup
 
 ```bash
