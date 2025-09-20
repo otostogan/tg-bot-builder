@@ -33,8 +33,12 @@ export interface IBotRuntimeOptions extends IBotBuilderOptions {
 }
 
 export interface BotRuntimeDependencies {
-    pageNavigatorFactory?: (options: PageNavigatorFactoryOptions) => PageNavigator;
-    sessionManagerFactory?: (options: SessionManagerFactoryOptions) => SessionManager;
+    pageNavigatorFactory?: (
+        options: PageNavigatorFactoryOptions,
+    ) => PageNavigator;
+    sessionManagerFactory?: (
+        options: SessionManagerFactoryOptions,
+    ) => SessionManager;
     persistenceGatewayFactory?: (
         options: PersistenceGatewayFactoryOptions,
     ) => PersistenceGateway;
@@ -288,11 +292,12 @@ export class BotRuntime {
 
             session.data[currentPage.id] = value;
 
-            const updatedStepState = await this.persistenceGateway.persistStepProgress(
-                database.stepState,
-                currentPage.id,
-                value,
-            );
+            const updatedStepState =
+                await this.persistenceGateway.persistStepProgress(
+                    database.stepState,
+                    currentPage.id,
+                    value,
+                );
             if (updatedStepState) {
                 database.stepState = updatedStepState;
             }
