@@ -3,7 +3,16 @@
     "version": "0.0.4",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
-    "description": "",
+    "description": "Modular NestJS builder for multi-step Telegram bots with Prisma persistence and pluggable session storage.",
+    "keywords": [
+        "nestjs",
+        "telegram-bot",
+        "bot-builder",
+        "wizard-flow",
+        "prisma",
+        "session-storage",
+        "dynamic-module"
+    ],
     "license": "MIT",
     "author": "otostogan",
     "private": false,
