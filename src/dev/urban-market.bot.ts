@@ -88,7 +88,11 @@ class UrbanMarketCatalogService {
             description:
                 'Бодрящий купаж сенчи и жёлтого чая с эфирными маслами бергамота и василька.',
             price: 640,
-            tastingNotes: ['пряный цитрус', 'лёгкая терпкость', 'долгий медовый шлейф'],
+            tastingNotes: [
+                'пряный цитрус',
+                'лёгкая терпкость',
+                'долгий медовый шлейф',
+            ],
         },
         {
             id: 'dessert-lavender-tart',
@@ -106,7 +110,11 @@ class UrbanMarketCatalogService {
             description:
                 'Классический чизкейк Нью-Йорк в мини-формате с домашней карамелью.',
             price: 360,
-            tastingNotes: ['сливочный сыр', 'солёная карамель', 'хруст печенья'],
+            tastingNotes: [
+                'сливочный сыр',
+                'солёная карамель',
+                'хруст печенья',
+            ],
         },
     ];
 
@@ -119,7 +127,9 @@ class UrbanMarketCatalogService {
     }
 
     public listProductsByCategory(categoryId: string): IProduct[] {
-        return this.products.filter((product) => product.categoryId === categoryId);
+        return this.products.filter(
+            (product) => product.categoryId === categoryId,
+        );
     }
 
     public getProduct(productId: string): IProduct | undefined {
@@ -179,9 +189,8 @@ const getProfile = (context: IBotBuilderContext): IUrbanMarketProfile => {
     return session.profile;
 };
 
-const isRegistrationCompleted = (
-    session?: IUrbanMarketSession,
-): boolean => Boolean(session?.registration?.completed);
+const isRegistrationCompleted = (session?: IUrbanMarketSession): boolean =>
+    Boolean(session?.registration?.completed);
 
 const formatProfileSummary = (profile: IUrbanMarketProfile): string => {
     const rows = [
@@ -312,7 +321,10 @@ const registrationPages: IBotPage[] = [
         yup: yup
             .string()
             .trim()
-            .min(10, 'Опишите адрес чуть подробнее, чтобы курьер точно нашёл вас.')
+            .min(
+                10,
+                'Опишите адрес чуть подробнее, чтобы курьер точно нашёл вас.',
+            )
             .required('Пожалуйста, укажите адрес доставки.'),
         onValid: (context) => {
             const profile = getProfile(context);
@@ -332,12 +344,15 @@ const registrationPages: IBotPage[] = [
                 : 'Спасибо за ответы!';
 
             const registeredAt = session.registration?.registeredAt
-                ? new Date(session.registration.registeredAt).toLocaleString('ru-RU', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      day: '2-digit',
-                      month: 'long',
-                  })
+                ? new Date(session.registration.registeredAt).toLocaleString(
+                      'ru-RU',
+                      {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          day: '2-digit',
+                          month: 'long',
+                      },
+                  )
                 : null;
 
             const history = registeredAt
@@ -364,7 +379,9 @@ const registrationPages: IBotPage[] = [
             [BUTTONS.openCatalog, BUTTONS.editProfile].includes(value.trim()),
         onValid: (context) => {
             const session = ensureSession(context);
-            const answer = String(context.session?.['registration-summary'] ?? '').trim();
+            const answer = String(
+                context.session?.['registration-summary'] ?? '',
+            ).trim();
 
             if (answer === BUTTONS.openCatalog) {
                 session.registration = {
@@ -389,7 +406,9 @@ const registrationPages: IBotPage[] = [
             }
         },
         next: (context) => {
-            const answer = String(context.session?.['registration-summary'] ?? '').trim();
+            const answer = String(
+                context.session?.['registration-summary'] ?? '',
+            ).trim();
             return answer === BUTTONS.editProfile ? 'first-name' : 'main-menu';
         },
     },
@@ -403,7 +422,10 @@ const catalogPages: IBotPage[] = [
             const profile = session.profile ?? {};
             const name = profile.firstName ?? 'друг';
             const cartSize = session.cart?.length ?? 0;
-            const cartLine = cartSize > 0 ? `\n🧺 В корзине ${cartSize} позици${cartSize === 1 ? 'я' : 'и'}.` : '';
+            const cartLine =
+                cartSize > 0
+                    ? `\n🧺 В корзине ${cartSize} позици${cartSize === 1 ? 'я' : 'и'}.`
+                    : '';
 
             return {
                 text: [
@@ -485,7 +507,9 @@ const catalogPages: IBotPage[] = [
             return categories.some((category) => category.title === normalized);
         },
         next: (context) => {
-            const answer = String(context.session?.['catalog-categories'] ?? '').trim();
+            const answer = String(
+                context.session?.['catalog-categories'] ?? '',
+            ).trim();
             if (answer === BUTTONS.mainMenu) {
                 return 'main-menu';
             }
@@ -526,7 +550,9 @@ const catalogPages: IBotPage[] = [
 
             const normalized = value.trim();
             if (
-                [BUTTONS.mainMenu, BUTTONS.backToCategories].includes(normalized)
+                [BUTTONS.mainMenu, BUTTONS.backToCategories].includes(
+                    normalized,
+                )
             ) {
                 return true;
             }
@@ -535,7 +561,9 @@ const catalogPages: IBotPage[] = [
             return products.some((product) => product.title === normalized);
         },
         next: (context) => {
-            const answer = String(context.session?.['catalog-tea'] ?? '').trim();
+            const answer = String(
+                context.session?.['catalog-tea'] ?? '',
+            ).trim();
             if (answer === BUTTONS.mainMenu) {
                 return 'main-menu';
             }
@@ -580,7 +608,9 @@ const catalogPages: IBotPage[] = [
 
             const normalized = value.trim();
             if (
-                [BUTTONS.mainMenu, BUTTONS.backToCategories].includes(normalized)
+                [BUTTONS.mainMenu, BUTTONS.backToCategories].includes(
+                    normalized,
+                )
             ) {
                 return true;
             }
@@ -589,7 +619,9 @@ const catalogPages: IBotPage[] = [
             return products.some((product) => product.title === normalized);
         },
         next: (context) => {
-            const answer = String(context.session?.['catalog-dessert'] ?? '').trim();
+            const answer = String(
+                context.session?.['catalog-dessert'] ?? '',
+            ).trim();
             if (answer === BUTTONS.mainMenu) {
                 return 'main-menu';
             }
@@ -651,16 +683,23 @@ const catalogPages: IBotPage[] = [
         },
         validate: (value) =>
             typeof value === 'string' &&
-            [BUTTONS.mainMenu, BUTTONS.clearCart, BUTTONS.checkout].includes(value.trim()),
+            [BUTTONS.mainMenu, BUTTONS.clearCart, BUTTONS.checkout].includes(
+                value.trim(),
+            ),
         onValid: (context) => {
             const session = ensureSession(context);
-            const answer = String(context.session?.['cart-overview'] ?? '').trim();
+            const answer = String(
+                context.session?.['cart-overview'] ?? '',
+            ).trim();
 
             if (answer === BUTTONS.clearCart) {
                 session.cart = [];
             }
 
-            if (answer === BUTTONS.checkout && (!session.cart || session.cart.length === 0)) {
+            if (
+                answer === BUTTONS.checkout &&
+                (!session.cart || session.cart.length === 0)
+            ) {
                 context.bot.sendMessage(
                     context.chatId,
                     'Корзина пуста. Добавьте хотя бы один товар, чтобы оформить заказ.',
@@ -668,7 +707,9 @@ const catalogPages: IBotPage[] = [
             }
         },
         next: (context) => {
-            const answer = String(context.session?.['cart-overview'] ?? '').trim();
+            const answer = String(
+                context.session?.['cart-overview'] ?? '',
+            ).trim();
 
             if (answer === BUTTONS.clearCart) {
                 return 'cart-overview';
@@ -695,7 +736,9 @@ const catalogPages: IBotPage[] = [
         content: (context) => {
             const session = ensureSession(context);
             const profile = session.profile ?? {};
-            const orderNumber = session.lastOrderNumber ?? `UG-${Date.now().toString().slice(-6)}`;
+            const orderNumber =
+                session.lastOrderNumber ??
+                `UG-${Date.now().toString().slice(-6)}`;
 
             return {
                 text: [
@@ -714,7 +757,9 @@ const catalogPages: IBotPage[] = [
             typeof value === 'string' &&
             [BUTTONS.mainMenu, BUTTONS.viewCatalog].includes(value.trim()),
         next: (context) => {
-            const answer = String(context.session?.['order-confirmation'] ?? '').trim();
+            const answer = String(
+                context.session?.['order-confirmation'] ?? '',
+            ).trim();
             if (answer === BUTTONS.viewCatalog) {
                 return 'catalog-categories';
             }
@@ -742,9 +787,13 @@ const catalogPages: IBotPage[] = [
         },
         validate: (value) =>
             typeof value === 'string' &&
-            [BUTTONS.mainMenu, BUTTONS.editProfile, BUTTONS.reset].includes(value.trim()),
+            [BUTTONS.mainMenu, BUTTONS.editProfile, BUTTONS.reset].includes(
+                value.trim(),
+            ),
         next: (context) => {
-            const answer = String(context.session?.['profile-overview'] ?? '').trim();
+            const answer = String(
+                context.session?.['profile-overview'] ?? '',
+            ).trim();
             if (answer === BUTTONS.editProfile) {
                 return 'address-update';
             }
@@ -764,11 +813,16 @@ const catalogPages: IBotPage[] = [
         yup: yup
             .string()
             .trim()
-            .min(10, 'Опишите адрес чуть подробнее, чтобы курьер точно нашёл вас.')
+            .min(
+                10,
+                'Опишите адрес чуть подробнее, чтобы курьер точно нашёл вас.',
+            )
             .required('Пожалуйста, укажите новый адрес.'),
         onValid: (context) => {
             const session = ensureSession(context);
-            const value = String(context.session?.['address-update'] ?? '').trim();
+            const value = String(
+                context.session?.['address-update'] ?? '',
+            ).trim();
             const profile = session.profile ?? {};
             profile.address = value;
             session.profile = profile;
@@ -801,7 +855,8 @@ const catalogPages: IBotPage[] = [
             };
         },
         validate: (value) =>
-            typeof value === 'string' && [BUTTONS.mainMenu, BUTTONS.viewCatalog].includes(value.trim()),
+            typeof value === 'string' &&
+            [BUTTONS.mainMenu, BUTTONS.viewCatalog].includes(value.trim()),
         next: (context) => {
             const answer = String(context.session?.support ?? '').trim();
             if (answer === BUTTONS.viewCatalog) {
@@ -821,7 +876,9 @@ const catalogPages: IBotPage[] = [
             [BUTTONS.confirmReset, BUTTONS.cancelReset].includes(value.trim()),
         onValid: (context) => {
             const session = ensureSession(context);
-            const answer = String(context.session?.['reset-confirm'] ?? '').trim();
+            const answer = String(
+                context.session?.['reset-confirm'] ?? '',
+            ).trim();
 
             if (answer === BUTTONS.confirmReset) {
                 session.profile = {};
@@ -838,7 +895,9 @@ const catalogPages: IBotPage[] = [
             }
         },
         next: (context) => {
-            const answer = String(context.session?.['reset-confirm'] ?? '').trim();
+            const answer = String(
+                context.session?.['reset-confirm'] ?? '',
+            ).trim();
             if (answer === BUTTONS.confirmReset) {
                 return 'first-name';
             }
@@ -875,7 +934,9 @@ const buildProductPage = (productId: string): IBotPage => ({
         ].includes(value.trim()),
     onValid: (context) => {
         const session = ensureSession(context);
-        const answer = String(context.session?.[`product-${productId}`] ?? '').trim();
+        const answer = String(
+            context.session?.[`product-${productId}`] ?? '',
+        ).trim();
 
         if (answer === BUTTONS.addToCart) {
             session.cart = session.cart ?? [];
@@ -887,14 +948,18 @@ const buildProductPage = (productId: string): IBotPage => ({
         }
     },
     next: (context) => {
-        const answer = String(context.session?.[`product-${productId}`] ?? '').trim();
+        const answer = String(
+            context.session?.[`product-${productId}`] ?? '',
+        ).trim();
         if (answer === BUTTONS.addToCart) {
             return 'cart-overview';
         }
 
         if (answer === BUTTONS.backToCategory) {
             const product = catalogService.getProduct(productId);
-            return product ? `catalog-${product.categoryId}` : 'catalog-categories';
+            return product
+                ? `catalog-${product.categoryId}`
+                : 'catalog-categories';
         }
 
         if (answer === BUTTONS.backToCategories) {
@@ -922,7 +987,9 @@ const keyboards = [
     {
         id: 'phone',
         resolve: () => ({
-            keyboard: [[{ text: '📱 Поделиться контактом', request_contact: true }]],
+            keyboard: [
+                [{ text: '📱 Поделиться контактом', request_contact: true }],
+            ],
             resize_keyboard: true,
             one_time_keyboard: true,
         }),
@@ -942,7 +1009,9 @@ const keyboards = [
         id: 'catalog-categories',
         resolve: () => {
             const categories = catalogService.listCategories();
-            const buttons = categories.map((category) => [{ text: category.title }]);
+            const buttons = categories.map((category) => [
+                { text: category.title },
+            ]);
             buttons.push([{ text: BUTTONS.mainMenu }]);
 
             return {
@@ -955,7 +1024,9 @@ const keyboards = [
         id: 'catalog-tea',
         resolve: () => {
             const products = catalogService.listProductsByCategory('tea');
-            const buttons = products.map((product) => [{ text: product.title }]);
+            const buttons = products.map((product) => [
+                { text: product.title },
+            ]);
             buttons.push([{ text: BUTTONS.backToCategories }]);
             buttons.push([{ text: BUTTONS.mainMenu }]);
 
@@ -969,7 +1040,9 @@ const keyboards = [
         id: 'catalog-dessert',
         resolve: () => {
             const products = catalogService.listProductsByCategory('dessert');
-            const buttons = products.map((product) => [{ text: product.title }]);
+            const buttons = products.map((product) => [
+                { text: product.title },
+            ]);
             buttons.push([{ text: BUTTONS.backToCategories }]);
             buttons.push([{ text: BUTTONS.mainMenu }]);
 
@@ -1000,9 +1073,7 @@ const keyboards = [
         resolve: (context: IBotBuilderContext) => {
             const session = ensureSession(context);
             const cartIsEmpty = !session.cart || session.cart.length === 0;
-            const keyboard = [
-                [{ text: BUTTONS.mainMenu }],
-            ];
+            const keyboard = [[{ text: BUTTONS.mainMenu }]];
 
             if (!cartIsEmpty) {
                 keyboard.unshift([{ text: BUTTONS.checkout }]);
@@ -1074,14 +1145,8 @@ const keyboards = [
 
             return {
                 keyboard: [
-                    [
-                        { text: BUTTONS.viewCatalog },
-                        { text: BUTTONS.viewCart },
-                    ],
-                    [
-                        { text: BUTTONS.viewProfile },
-                        { text: BUTTONS.support },
-                    ],
+                    [{ text: BUTTONS.viewCatalog }, { text: BUTTONS.viewCart }],
+                    [{ text: BUTTONS.viewProfile }, { text: BUTTONS.support }],
                     [{ text: BUTTONS.reset }],
                 ],
                 resize_keyboard: true,
