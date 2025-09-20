@@ -1,9 +1,9 @@
 # tg-bot-builder
 
-## Описание
+## Description
 **tg-bot-builder** is a NestJS-oriented toolkit that wires [node-telegram-bot-api](https://github.com/yagop/node-telegram-bot-api) runtimes, conversational page flows, and optional Prisma persistence into a single module. The package exports a `BotBuilder` dynamic module along with helper services such as `BuilderService`, `BotRuntime`, and factories for session management and middleware so you can script Telegram conversations with predictable state handling and validation.
 
-## Подключение
+## Connection
 The builder is exposed as a NestJS dynamic module. Register it in your root module by returning one or more bot definitions from `BotBuilder.forRootAsync`. Each definition must provide a Telegram token and the conversational pages you want to serve.
 
 ```ts
@@ -47,7 +47,7 @@ export class AppModule {}
 
 The module bootstraps `BuilderService`, which internally calls `registerBots` so that each runtime starts polling for updates immediately after Nest finishes booting.
 
-## Подключение нескольких ботов
+## Connecting multiple bots
 You can register multiple bots at once by returning an array of options from `forRootAsync`, or augment the configuration later through `BotBuilder.forFeature`. Every option is normalized by `normalizeBotOptions`, which makes it safe to omit the `id` as long as a slug or token is present.
 
 ```ts
@@ -80,7 +80,7 @@ export class BotsModule {}
 
 `BuilderService` keeps the registered runtimes in a map, replacing any existing instance that uses the same id or token, so you can safely redeploy updates without restarting the Nest process manually.
 
-## Подключение и работа через Prisma
+## Connection and operation via Prisma
 When a Prisma client is supplied, the runtime enables persistent chat history by way of the `PrismaPersistenceGateway`. Pass a configured `PrismaClient` and a `slug` so every bot stores its own answers and step history.
 
 ```ts
@@ -132,7 +132,7 @@ export class SurveyModule {}
 
 The Prisma gateway will automatically upsert the Telegram user, persist each page submission through `persistStepProgress`, and expose the hydrated database state on `ctx.db`. You can read or mutate `ctx.db.user` / `ctx.db.stepState` from within page callbacks, handlers, or middlewares to build multi-step funnels backed by your relational data.
 
-## Работа без Prisma с использованием локального стора
+## Working without Prisma using a local store
 If you do not need database persistence, provide a custom `IBotSessionStorage` implementation (or rely on the built-in in-memory fallback) to keep session data in any store you like. The session manager will normalize entries into the `IChatSessionState` shape.
 
 ```ts
@@ -177,7 +177,7 @@ export class LightweightModule {}
 
 Custom stores are useful for Redis, key-value services, or encrypted file persistence. Because the runtime caches sessions internally, your storage driver only needs to support simple `get`, `set`, and optional `delete` operations.
 
-## Разные варианты конфигурации страниц
+## Different page configuration options
 Pages are described with the `IBotPage` interface and can combine validation, keyboards, and middleware to produce rich flows.
 
 - **Yup validation**: set the `yup` schema and the runtime will call `PageNavigator.validatePageValue` before advancing.
@@ -240,23 +240,3 @@ const updateLogger: IBotMiddlewareConfig = {
   },
 };
 ```
-
-These snippets align with the public exports from `src/index.ts`—`IBotPage`, `IBotKeyboardConfig`, `IBotMiddlewareConfig`, and helper factories like `sortMiddlewareConfigs` and `buildMiddlewarePipeline` give you direct access to the same primitives used by the runtime.
-
-## Установка и запуск
-The package targets Node.js **18+** (see the `engines` field). Install it together with its peer dependencies and leverage the included npm scripts for building and publishing.
-
-```bash
-npm install tg-bot-builder @nestjs/common @nestjs/core @nestjs/platform-express reflect-metadata rxjs
-
-# Optional: grab configuration and Prisma utilities
-npm install @nestjs/config @prisma/client prisma yup
-
-# Build the TypeScript sources to dist/
-npm run build
-
-# Publish (requires npm login and 2FA if enabled)
-npm run distribute
-```
-
-The `distribute` script simply invokes `npm run build && npm publish`, so make sure your environment is authenticated with npm, the version in `package.json` is bumped, and the `dist` folder is included by your `.npmignore` before running it in CI or release pipelines.
