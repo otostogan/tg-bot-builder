@@ -3,9 +3,11 @@ import {
     IBotBuilderModuleAsyncOptions,
     IBotBuilderOptions,
 } from './app.interface';
-import { BOT_BUILDER_MODULE_OPTIONS } from './app.constants';
+import {
+    BOT_BUILDER_MODULE_OPTIONS,
+    BOT_BUILDER_PRISMA,
+} from './app.constants';
 import { BuilderService } from './builder/builder.service';
-import { PrismaService } from './prisma/prisma.service';
 import { IBotRuntimeOptions, normalizeBotOptions } from './builder/bot-runtime';
 
 const BOT_BUILDER_BOTS_REGISTRATION = Symbol('BOT_BUILDER_BOTS_REGISTRATION');
@@ -15,21 +17,22 @@ export class BotBuilder {
     static forRootAsync(options: IBotBuilderModuleAsyncOptions): DynamicModule {
         const asyncOptions = this.createAsyncOptionsProvider(options);
         const botsRegistration = this.createBotsRegistrationProvider();
+        const prismaProvider = this.createPrismaProvider();
 
         return {
             module: BotBuilder,
             imports: options.imports ?? [],
             providers: [
                 asyncOptions,
-                PrismaService,
                 BuilderService,
                 botsRegistration,
+                prismaProvider,
             ],
             exports: [
                 BotBuilder,
                 BuilderService,
-                PrismaService,
                 BOT_BUILDER_MODULE_OPTIONS,
+                BOT_BUILDER_PRISMA,
             ],
         };
     }
@@ -79,6 +82,15 @@ export class BotBuilder {
                 return true;
             },
             inject: [BuilderService, BOT_BUILDER_MODULE_OPTIONS],
+        };
+    }
+
+    private static createPrismaProvider(): Provider {
+        return {
+            provide: BOT_BUILDER_PRISMA,
+            useFactory: (options: IBotRuntimeOptions[]) =>
+                options.find((option) => option.prisma)?.prisma,
+            inject: [BOT_BUILDER_MODULE_OPTIONS],
         };
     }
 

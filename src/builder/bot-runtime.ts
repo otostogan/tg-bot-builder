@@ -19,11 +19,11 @@ import {
     TPrismaJsonValue,
 } from '../app.interface';
 import { PublisherService } from 'otostogan-nest-logger';
-import { PrismaService } from '../prisma/prisma.service';
 import TelegramBot = require('node-telegram-bot-api');
+import type { PrismaClient } from '@prisma/client/extension';
 
 const DEFAULT_PAGE_MIDDLEWARE_REJECTION_MESSAGE =
-    'Доступ к этой странице запрещён.';
+    'Access to this page is denied..';
 
 interface IChatSessionState {
     pageId?: TBotPageIdentifier;
@@ -110,14 +110,14 @@ export class BotRuntime {
     private initialPageId?: TBotPageIdentifier;
     private readonly sessionStorage: IBotSessionStorage<IChatSessionState>;
     private readonly sessionCache: Map<string, IChatSessionState> = new Map();
-    private readonly prisma?: PrismaService;
+    private readonly prisma?: PrismaClient;
     private readonly slug: string;
     private readonly helperServices: Record<string, unknown>;
 
     constructor(
         options: IBotRuntimeOptions,
         private readonly logger: PublisherService,
-        private readonly prismaService: PrismaService,
+        private readonly prismaService?: PrismaClient,
     ) {
         this.id = options.id;
         this.token = options.TG_BOT_TOKEN;
@@ -257,30 +257,6 @@ export class BotRuntime {
         });
 
         await this.renderPage(page, context);
-    }
-
-    public async goToInitialPage(
-        chatId: TelegramBot.ChatId,
-        options?: IBotPageNavigationOptions,
-    ): Promise<void> {
-        const initialPage = this.resolveInitialPage();
-        if (!initialPage) {
-            this.logger.warn('No initial page configured');
-            return;
-        }
-
-        const navigationOptions: IBotPageNavigationOptions = {
-            ...options,
-        };
-
-        if (
-            navigationOptions.resetState === undefined &&
-            navigationOptions.state === undefined
-        ) {
-            navigationOptions.resetState = true;
-        }
-
-        await this.goToPage(chatId, initialPage.id, navigationOptions);
     }
 
     private registerHandlers(): void {
