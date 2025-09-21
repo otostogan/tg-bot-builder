@@ -78,10 +78,15 @@ export type TBotPageNextResolver = (
     | undefined
     | Promise<TBotPageIdentifier | null | undefined>;
 
+export interface IBotPageValidateResult {
+    valid: boolean;
+    message?: string;
+}
+
 export type TBotPageValidateFn = (
     value: unknown,
     context: IBotBuilderContext,
-) => boolean | Promise<boolean>;
+) => IBotPageValidateResult | Promise<IBotPageValidateResult>;
 
 export interface IBotPage {
     id: TBotPageIdentifier;
