@@ -4,6 +4,7 @@ import {
     IBotBuilderContext,
     IBotKeyboardConfig,
     IBotPage,
+    IBotPageValidateResult,
     IBotPageMiddlewareConfig,
     IBotPageMiddlewareResult,
     TBotKeyboardMarkup,
@@ -210,11 +211,15 @@ export class PageNavigator {
 
         if (page.validate) {
             try {
-                const isValid = await page.validate(value, context);
-                if (!isValid) {
+                const result = await page.validate(value, context);
+                const normalizedResult =
+                    this.normalizeCustomValidationResult(result);
+
+                if (!normalizedResult.valid) {
                     return {
                         valid: false,
                         errorMessage:
+                            normalizedResult.message ??
                             'Incorrect data entered, please try again.',
                     };
                 }
@@ -228,6 +233,27 @@ export class PageNavigator {
         }
 
         return { valid: true };
+    }
+
+    private normalizeCustomValidationResult(
+        result: IBotPageValidateResult | null | undefined,
+    ): IBotPageValidateResult {
+        if (!result || typeof result !== 'object') {
+            return { valid: false };
+        }
+
+        const normalized: IBotPageValidateResult = {
+            valid: Boolean(result.valid),
+        };
+
+        if (
+            typeof result.message === 'string' &&
+            result.message.trim().length > 0
+        ) {
+            normalized.message = result.message.trim();
+        }
+
+        return normalized;
     }
 
     /**

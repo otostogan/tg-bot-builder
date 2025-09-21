@@ -56,6 +56,7 @@ export {
     IBotMiddlewareContext,
     IBotPage,
     IBotPageContentPayload,
+    IBotPageValidateResult,
     IBotPageMiddlewareConfig,
     IBotPageMiddlewareResult,
     IBotPageNavigationOptions,
