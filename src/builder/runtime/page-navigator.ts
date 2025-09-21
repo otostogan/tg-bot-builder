@@ -1,4 +1,4 @@
-import { ValidationError } from 'yup';
+import * as yup from 'yup';
 import TelegramBot = require('node-telegram-bot-api');
 import {
     IBotBuilderContext,
@@ -192,9 +192,13 @@ export class PageNavigator {
         if (page.yup) {
             try {
                 await page.yup.validate(value, { context });
-            } catch (error) {
-                if (error instanceof ValidationError) {
-                    return { valid: false, errorMessage: error.message };
+            } catch (error: any) {
+                error = new yup.ValidationError(error);
+                if (error instanceof yup.ValidationError) {
+                    return {
+                        valid: false,
+                        errorMessage: error.errors.join(','),
+                    };
                 }
 
                 return {
