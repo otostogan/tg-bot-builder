@@ -332,6 +332,15 @@ export class BotRuntime {
                 await currentPage.onValid(buildContext());
             }
 
+            const synchronizedStepState =
+                await this.persistenceGateway.syncSessionState(
+                    database.stepState,
+                    session.data,
+                );
+            if (synchronizedStepState) {
+                database.stepState = synchronizedStepState;
+            }
+
             const nextPageId = await this.pageNavigator.resolveNextPageId(
                 currentPage,
                 buildContext(),

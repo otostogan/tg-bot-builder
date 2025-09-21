@@ -1,12 +1,17 @@
 import TelegramBot = require('node-telegram-bot-api');
 import type { PrismaClient } from '@prisma/client/extension';
-import { IPrismaStepState, IPrismaUser } from '../../app.interface';
+import {
+    IBotSessionState,
+    IPrismaStepState,
+    IPrismaUser,
+} from '../../app.interface';
 import { IChatSessionState } from './session-manager';
 import {
     normalizeAnswers,
     normalizeHistory,
     serializeValue,
 } from '../utils/serialization';
+import { isDeepStrictEqual } from 'util';
 
 export interface IContextDatabaseState {
     user?: IPrismaUser;
@@ -35,6 +40,10 @@ export interface IPersistenceGateway {
         stepState: IPrismaStepState | undefined,
         pageId: string | undefined,
     ): Promise<IPrismaStepState | undefined>;
+    syncSessionState(
+        stepState: IPrismaStepState | undefined,
+        sessionData: IBotSessionState,
+    ): Promise<IPrismaStepState | undefined>;
 }
 
 class NoopPersistenceGateway implements IPersistenceGateway {
@@ -61,6 +70,16 @@ class NoopPersistenceGateway implements IPersistenceGateway {
      */
     public async updateStepStateCurrentPage(
         stepState: IPrismaStepState | undefined,
+    ): Promise<IPrismaStepState | undefined> {
+        return stepState;
+    }
+
+    /**
+     * Skips session synchronisation when persistence is disabled.
+     */
+    public async syncSessionState(
+        stepState: IPrismaStepState | undefined,
+        _sessionData: IBotSessionState,
     ): Promise<IPrismaStepState | undefined> {
         return stepState;
     }
@@ -222,6 +241,34 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
         });
 
         return updatedStepState;
+    }
+
+    /**
+     * Ensures the stored session snapshot mirrors the in-memory session data
+     * so derived helpers and summaries survive restarts.
+     */
+    public async syncSessionState(
+        stepState: IPrismaStepState | undefined,
+        sessionData: IBotSessionState,
+    ): Promise<IPrismaStepState | undefined> {
+        if (!stepState) {
+            return stepState;
+        }
+
+        const serializedSession = serializeValue(sessionData ?? {});
+        const normalizedSession = normalizeAnswers(serializedSession ?? {});
+        const normalizedExisting = normalizeAnswers(stepState.answers);
+
+        if (isDeepStrictEqual(normalizedExisting, normalizedSession)) {
+            return stepState;
+        }
+
+        return (await this.prisma.stepState.update({
+            where: { id: stepState.id },
+            data: {
+                answers: serializedSession ?? {},
+            },
+        })) as unknown as IPrismaStepState;
     }
 
     /**
