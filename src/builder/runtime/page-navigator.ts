@@ -12,14 +12,14 @@ import {
     TBotPageContent,
     TBotPageContentResult,
 } from '../../app.interface';
-import { PublisherService } from 'otostogan-nest-logger';
+import { Logger } from '@nestjs/common';
 
 const DEFAULT_PAGE_MIDDLEWARE_REJECTION_MESSAGE =
     'Access to this page is denied..';
 
 export interface PageNavigatorOptions {
     bot: TelegramBot;
-    logger: PublisherService;
+    logger: Logger;
     initialPageId?: TBotPageIdentifier;
     keyboards?: IBotKeyboardConfig[];
     pageMiddlewares?: IBotPageMiddlewareConfig[];

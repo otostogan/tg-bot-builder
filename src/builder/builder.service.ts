@@ -1,6 +1,5 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import TelegramBot = require('node-telegram-bot-api');
-import { PublisherService } from 'otostogan-nest-logger';
 import { IBotBuilderOptions } from '../app.interface';
 import {
     BotRuntime,
@@ -12,6 +11,7 @@ import type { PrismaClient } from '@prisma/client/extension';
 
 @Injectable()
 export class BuilderService {
+    private logger = new Logger(BuilderService.name);
     private readonly bots = new Map<string, BotRuntime>();
     private readonly botInstances = new Map<string, TelegramBot>();
     private readonly botOptions = new Map<string, IBotRuntimeOptions>();
@@ -22,7 +22,6 @@ export class BuilderService {
      * optional Prisma dependencies injected from the Nest container.
      */
     constructor(
-        private readonly logger: PublisherService,
         @Optional()
         @Inject(BOT_BUILDER_PRISMA)
         private readonly prismaService?: PrismaClient,

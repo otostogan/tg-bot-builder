@@ -10,7 +10,6 @@ import {
     IBotRuntimeMessages,
     TBotPageIdentifier,
 } from '../app.interface';
-import { PublisherService } from 'otostogan-nest-logger';
 import TelegramBot = require('node-telegram-bot-api');
 import type { PrismaClient } from '@prisma/client/extension';
 import {
@@ -40,6 +39,7 @@ import {
     mergeMiddlewareConfigs,
     sortMiddlewareConfigs,
 } from './runtime/middleware-pipeline';
+import { Logger } from '@nestjs/common';
 
 export interface IBotRuntimeOptions extends IBotBuilderOptions {
     id: string;
@@ -125,7 +125,7 @@ export class BotRuntime {
     public readonly token: string;
     public readonly bot: TelegramBot;
 
-    private readonly logger: PublisherService;
+    private readonly logger: Logger;
     private readonly pageNavigator: PageNavigator;
     private readonly sessionManager: SessionManager;
     private readonly persistenceGateway: IPersistenceGateway;
@@ -139,7 +139,7 @@ export class BotRuntime {
      */
     constructor(
         options: IBotRuntimeOptions,
-        logger: PublisherService,
+        logger: Logger,
         prismaService?: PrismaClient,
         dependencies: BotRuntimeDependencies = {},
     ) {
@@ -187,7 +187,7 @@ export class BotRuntime {
 
         this.pageNavigator.registerPages(options.pages ?? []);
 
-        this.logger.info(this.messages.runtimeInitialized({ id: this.id }));
+        this.logger.log(this.messages.runtimeInitialized({ id: this.id }));
 
         this.registerHandlers(options.handlers ?? []);
     }
