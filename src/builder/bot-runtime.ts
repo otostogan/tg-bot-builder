@@ -8,6 +8,7 @@ import {
     IBotSessionState,
     IBotSessionStorage,
     IBotRuntimeMessages,
+    IPrismaStepState,
     TBotPageIdentifier,
 } from '../app.interface';
 import TelegramBot = require('node-telegram-bot-api');
@@ -40,6 +41,8 @@ import {
     sortMiddlewareConfigs,
 } from './runtime/middleware-pipeline';
 import { Logger } from '@nestjs/common';
+import { normalizeAnswers } from './utils/serialization';
+import { isDeepStrictEqual } from 'util';
 
 export interface IBotRuntimeOptions extends IBotBuilderOptions {
     id: string;
@@ -264,6 +267,14 @@ export class BotRuntime {
 
             session.data = session.data ?? {};
 
+            const { database, buildContext } = await this.prepareContext({
+                chatId,
+                session,
+                message,
+                metadata,
+                user: session.user,
+            });
+
             if (!session.pageId) {
                 await this.startFromInitialPage({
                     chatId,
@@ -286,12 +297,6 @@ export class BotRuntime {
                 return;
             }
 
-            const { database, buildContext } = await this.prepareContext({
-                chatId,
-                session,
-                message,
-                metadata,
-            });
             const context = buildContext();
 
             const value = this.pageNavigator.extractMessageValue(message);
@@ -641,6 +646,12 @@ export class BotRuntime {
             options.pageId ?? options.session.pageId,
         );
 
+        await this.hydrateSessionFromStepState({
+            chatId: options.chatId,
+            session: options.session,
+            stepState: database.stepState,
+        });
+
         const buildContext = this.createContextBuilder({
             chatId: options.chatId,
             session: options.session,
@@ -692,6 +703,90 @@ export class BotRuntime {
                 user: hasUserOverride ? overrides.user : options.user,
             });
         };
+    }
+
+    /**
+     * Rehydrates the in-memory session from Prisma when the cached session is
+     * empty, allowing conversations to resume after process restarts.
+     */
+    private async hydrateSessionFromStepState(options: {
+        chatId: TelegramBot.ChatId;
+        session: IChatSessionState;
+        stepState?: IPrismaStepState;
+    }): Promise<void> {
+        if (!options.stepState) {
+            return;
+        }
+
+        if (!this.shouldHydrateSessionFromPersistence(options.session)) {
+            return;
+        }
+
+        const persistedPageId = this.normalizePersistedPageId(
+            options.stepState.currentPage,
+        );
+        const persistedAnswers = normalizeAnswers(options.stepState.answers);
+        const mergedSessionData = {
+            ...(options.session.data ?? {}),
+            ...persistedAnswers,
+        } as IBotSessionState;
+
+        let sessionChanged = false;
+
+        if (options.session.pageId !== persistedPageId) {
+            options.session.pageId = persistedPageId;
+            sessionChanged = true;
+        }
+
+        if (
+            !isDeepStrictEqual(options.session.data ?? {}, mergedSessionData)
+        ) {
+            options.session.data = mergedSessionData;
+            sessionChanged = true;
+        } else if (!options.session.data) {
+            options.session.data = mergedSessionData;
+        }
+
+        if (sessionChanged) {
+            await this.sessionManager.saveSession(
+                options.chatId,
+                options.session,
+            );
+        }
+    }
+
+    /**
+     * Determines whether the cached session contains any meaningful progress
+     * and therefore requires hydration from persistence.
+     */
+    private shouldHydrateSessionFromPersistence(
+        session: IChatSessionState,
+    ): boolean {
+        const hasPage = session.pageId !== undefined && session.pageId !== null;
+        if (hasPage) {
+            return false;
+        }
+
+        const data = session.data;
+        if (!data || typeof data !== 'object') {
+            return true;
+        }
+
+        return Object.keys(data).length === 0;
+    }
+
+    /**
+     * Normalizes persisted page identifiers, discarding null or blank values.
+     */
+    private normalizePersistedPageId(
+        pageId: string | null | undefined,
+    ): string | undefined {
+        if (typeof pageId !== 'string') {
+            return undefined;
+        }
+
+        const trimmed = pageId.trim();
+        return trimmed.length > 0 ? trimmed : undefined;
     }
 
     /**
