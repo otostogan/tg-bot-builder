@@ -199,7 +199,7 @@ export class PageNavigator {
 
                 return {
                     valid: false,
-                    errorMessage: 'Ошибка проверки данных, попробуйте ещё раз.',
+                    errorMessage: 'Data validation error, please try again.',
                 };
             }
         }
@@ -211,14 +211,14 @@ export class PageNavigator {
                     return {
                         valid: false,
                         errorMessage:
-                            'Введены некорректные данные, попробуйте ещё раз.',
+                            'Incorrect data entered, please try again.',
                     };
                 }
             } catch (error) {
                 const message =
                     error instanceof Error
                         ? error.message
-                        : 'Ошибка проверки данных, попробуйте ещё раз.';
+                        : 'Data validation error, please try again.';
                 return { valid: false, errorMessage: message };
             }
         }
