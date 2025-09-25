@@ -128,6 +128,59 @@ All getters return clones of the stored data, keeping the underlying maps immuta
 
 When a Prisma client is supplied, the runtime enables persistent chat history by way of the `PrismaPersistenceGateway`. Pass a configured `PrismaClient` and a `slug` so every bot stores its own answers and step history.
 
+### Prisma models expected by the built-in gateway
+
+Out of the box the gateway assumes the following Prisma schema. If you do not already have conflicting models, add these three entities to your `schema.prisma` so the runtime can store users, step state snapshots, and form submissions:
+
+```prisma
+model User {
+  id           Int         @id @default(autoincrement())
+  telegramId   BigInt      @unique
+  chatId       String?
+  username     String?
+  firstName    String?
+  lastName     String?
+  languageCode String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  stepStates   StepState[]
+  formEntries  FormEntry[]
+  Wallet       Wallet[]
+}
+
+model StepState {
+  id          Int         @id @default(autoincrement())
+  userId      Int
+  chatId      String
+  slug        String
+  currentPage String?
+  answers     Json?
+  history     Json?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  formEntries FormEntry[]
+
+  @@unique([userId, slug])
+}
+
+model FormEntry {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  stepStateId Int
+  slug        String
+  pageId      String
+  payload     Json
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stepState   StepState @relation(fields: [stepStateId], references: [id], onDelete: Cascade)
+
+  @@unique([stepStateId, pageId])
+}
+```
+
+If your project already defines its own models, consider the adapter approach described below to map existing entities into the shapes required by the builder.
+
 ```ts
 import { Module } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
