@@ -85,6 +85,45 @@ export class BotsModule {}
 
 `BuilderService` keeps the registered runtimes in a map, replacing any existing instance that uses the same id or token, so you can safely redeploy updates without restarting the Nest process manually.
 
+## Observing registered bots via `BotRegistryService`
+
+Whenever `BuilderService` registers a bot it stores the runtime, metadata, and the low-level `TelegramBot` instance in internal maps. The `BotRegistryService` exposes these details as an injectable, read-only API so that application modules can inspect active bots, render dashboards, or orchestrate bulk messaging without touching private state.
+
+```ts
+import { Controller, Get, Param } from '@nestjs/common';
+import { BotRegistryService } from 'tg-bot-builder';
+
+@Controller('bots')
+export class BotsController {
+    constructor(private readonly registry: BotRegistryService) {}
+
+    @Get()
+    listBots() {
+        return this.registry.listBots();
+    }
+
+    @Get(':id/send-test')
+    async triggerTest(@Param('id') id: string) {
+        const bot = this.registry.getTelegramBot(id);
+        if (!bot) {
+            return { ok: false, reason: 'Bot not found' };
+        }
+
+        await bot.sendMessage(process.env.ADMIN_CHAT_ID!, 'Test broadcast');
+        return { ok: true };
+    }
+}
+```
+
+The service offers helpers to:
+
+- Retrieve lightweight metadata for every bot with `listBots()`, including ids, slugs, token previews, and aggregate statistics.
+- Fetch a single bot’s metadata via `getBotMetadata(id)`.
+- Access the running `TelegramBot` client through `getTelegramBot(id)` for custom messaging workflows.
+- Obtain the owning `BotRuntime` using `getRuntime(id)` when you need access to session managers or persistence gateways.
+
+All getters return clones of the stored data, keeping the underlying maps immutable. You can export the service from your module just like any Nest provider and inject it wherever runtime observability or orchestration is required.
+
 ## Connection and operation via Prisma
 
 When a Prisma client is supplied, the runtime enables persistent chat history by way of the `PrismaPersistenceGateway`. Pass a configured `PrismaClient` and a `slug` so every bot stores its own answers and step history.
