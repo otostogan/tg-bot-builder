@@ -2,6 +2,7 @@ import { ModuleMetadata } from '@nestjs/common';
 import type TelegramBot from 'node-telegram-bot-api';
 import type { AnySchema } from 'yup';
 import type { PrismaClient } from '@prisma/client/extension';
+import type { BotRuntimeDependencies } from './builder/bot-runtime';
 
 export type TPrismaJsonValue =
     | string
@@ -236,6 +237,7 @@ export interface IBotBuilderOptions {
     services?: Record<string, unknown>;
     pageMiddlewares?: IBotPageMiddlewareConfig[];
     messages?: TBotRuntimeMessageOverrides;
+    dependencies?: BotRuntimeDependencies;
 }
 
 export interface IBotBuilderModuleAsyncOptions

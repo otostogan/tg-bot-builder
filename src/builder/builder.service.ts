@@ -74,6 +74,7 @@ export class BuilderService {
             options,
             this.logger,
             this.prismaService,
+            options.dependencies ? { ...options.dependencies } : undefined,
         );
         this.bots.set(botId, runtime);
         this.botInstances.set(botId, runtime.bot);
@@ -193,6 +194,9 @@ export class BuilderService {
             keyboards: [...(options.keyboards ?? [])],
             services: { ...(options.services ?? {}) },
             pageMiddlewares: [...(options.pageMiddlewares ?? [])],
+            dependencies: options.dependencies
+                ? { ...options.dependencies }
+                : undefined,
         };
     }
 }
