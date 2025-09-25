@@ -256,19 +256,19 @@ const prisma = new PrismaClient();
 interface ExistingUser {
     id: number;
     telegramId: bigint;
-    channelId: string;
-    nickname: string | null;
-    locale: string | null;
+    chatId: string | null;
+    username: string | null;
     firstName: string | null;
     lastName: string | null;
+    languageCode: string | null;
 }
 
-interface ExistingFlowState {
+interface ExistingStepState {
     id: number;
-    accountId: number;
-    channelId: string;
+    userId: number;
+    chatId: string;
     slug: string;
-    currentStep: string | null;
+    currentPage: string | null;
     answers: unknown;
     history: unknown;
 }
@@ -301,45 +301,46 @@ class ExistingModelsGateway implements IPersistenceGateway {
         }
 
         const chatIdentifier = chatId.toString();
+        const telegramId = BigInt(telegramUser.id);
 
-        const user = await this.db.account.upsert({
-            where: { telegramId: BigInt(telegramUser.id) },
+        const user = await this.db.user.upsert({
+            where: { telegramId },
             update: {
-                channelId: chatIdentifier,
-                nickname: telegramUser.username ?? undefined,
+                chatId: chatIdentifier,
+                username: telegramUser.username ?? undefined,
                 firstName: telegramUser.first_name ?? undefined,
                 lastName: telegramUser.last_name ?? undefined,
-                locale: telegramUser.language_code ?? undefined,
+                languageCode: telegramUser.language_code ?? undefined,
             },
             create: {
-                telegramId: BigInt(telegramUser.id),
-                channelId: chatIdentifier,
-                nickname: telegramUser.username,
+                telegramId,
+                chatId: chatIdentifier,
+                username: telegramUser.username,
                 firstName: telegramUser.first_name,
                 lastName: telegramUser.last_name,
-                locale: telegramUser.language_code,
+                languageCode: telegramUser.language_code,
             },
         });
 
-        const flowState = await this.db.botFlowState.upsert({
-            where: { accountId_slug: { accountId: user.id, slug: this.slug } },
+        const stepState = await this.db.stepState.upsert({
+            where: { userId_slug: { userId: user.id, slug: this.slug } },
             update: {
-                channelId: chatIdentifier,
-                currentStep: currentPageId ?? session.pageId ?? null,
+                chatId: chatIdentifier,
+                currentPage: currentPageId ?? session.pageId ?? null,
             },
             create: {
-                accountId: user.id,
-                channelId: user.channelId,
+                userId: user.id,
+                chatId: chatIdentifier,
                 slug: this.slug,
-                currentStep: null,
-                answers: {},
+                currentPage: null,
+                answers: session.data ?? {},
                 history: [],
             },
         });
 
         return {
             user: this.mapUser(user as ExistingUser),
-            stepState: this.mapState(flowState as ExistingFlowState),
+            stepState: this.mapState(stepState as ExistingStepState),
         };
     }
 
@@ -352,22 +353,47 @@ class ExistingModelsGateway implements IPersistenceGateway {
             return stepState;
         }
 
-        const updated = await this.db.botFlowState.update({
+        const previousHistory = Array.isArray(stepState.history)
+            ? stepState.history
+            : [];
+        const previousAnswers =
+            typeof stepState.answers === 'object' && stepState.answers !== null
+                ? (stepState.answers as Record<string, unknown>)
+                : {};
+
+        const updated = await this.db.stepState.update({
             where: { id: stepState.id },
             data: {
-                currentStep: pageId,
+                currentPage: pageId,
                 answers: {
-                    ...(stepState.answers as Record<string, unknown>),
+                    ...previousAnswers,
                     [pageId]: value,
                 },
                 history: [
-                    ...(stepState.history as unknown[]),
+                    ...previousHistory,
                     { pageId, value, committedAt: new Date().toISOString() },
                 ],
             },
         });
 
-        return this.mapState(updated as ExistingFlowState);
+        await this.db.formEntry.upsert({
+            where: {
+                stepStateId_pageId: {
+                    stepStateId: updated.id,
+                    pageId,
+                },
+            },
+            update: { payload: value },
+            create: {
+                userId: updated.userId,
+                stepStateId: updated.id,
+                slug: updated.slug,
+                pageId,
+                payload: value,
+            },
+        });
+
+        return this.mapState(updated as ExistingStepState);
     }
 
     public async updateStepStateCurrentPage(
@@ -378,12 +404,12 @@ class ExistingModelsGateway implements IPersistenceGateway {
             return stepState;
         }
 
-        const updated = await this.db.botFlowState.update({
+        const updated = await this.db.stepState.update({
             where: { id: stepState.id },
-            data: { currentStep: pageId },
+            data: { currentPage: pageId ?? null },
         });
 
-        return this.mapState(updated as ExistingFlowState);
+        return this.mapState(updated as ExistingStepState);
     }
 
     public async syncSessionState(
@@ -394,33 +420,33 @@ class ExistingModelsGateway implements IPersistenceGateway {
             return stepState;
         }
 
-        const updated = await this.db.botFlowState.update({
+        const updated = await this.db.stepState.update({
             where: { id: stepState.id },
             data: { answers: sessionData },
         });
 
-        return this.mapState(updated as ExistingFlowState);
+        return this.mapState(updated as ExistingStepState);
     }
 
     private mapUser(user: ExistingUser): IPrismaUser {
         return {
             id: user.id,
             telegramId: user.telegramId,
-            chatId: user.channelId,
-            username: user.nickname,
+            chatId: user.chatId,
+            username: user.username,
             firstName: user.firstName,
             lastName: user.lastName,
-            languageCode: user.locale,
+            languageCode: user.languageCode,
         };
     }
 
-    private mapState(state: ExistingFlowState): IPrismaStepState {
+    private mapState(state: ExistingStepState): IPrismaStepState {
         return {
             id: state.id,
-            userId: state.accountId,
-            chatId: state.channelId,
+            userId: state.userId,
+            chatId: state.chatId,
             slug: state.slug,
-            currentPage: state.currentStep,
+            currentPage: state.currentPage,
             answers: state.answers,
             history: state.history,
         };
