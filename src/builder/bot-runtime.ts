@@ -730,8 +730,8 @@ export class BotRuntime {
     }
 
     /**
-     * Rehydrates the in-memory session from Prisma when the cached session is
-     * empty, allowing conversations to resume after process restarts.
+     * Rehydrates the in-memory session from Prisma so chats always resume from
+     * the latest persisted step after process restarts or cache evictions.
      */
     private async hydrateSessionFromStepState(options: {
         chatId: TelegramBot.ChatId;
@@ -742,16 +742,13 @@ export class BotRuntime {
             return;
         }
 
-        if (!this.shouldHydrateSessionFromPersistence(options.session)) {
-            return;
-        }
-
         const persistedPageId = this.normalizePersistedPageId(
             options.stepState.currentPage,
         );
         const persistedAnswers = normalizeAnswers(options.stepState.answers);
+        const existingSessionData = options.session.data ?? {};
         const mergedSessionData = {
-            ...(options.session.data ?? {}),
+            ...existingSessionData,
             ...persistedAnswers,
         } as IBotSessionState;
 
@@ -762,7 +759,7 @@ export class BotRuntime {
             sessionChanged = true;
         }
 
-        if (!isDeepStrictEqual(options.session.data ?? {}, mergedSessionData)) {
+        if (!isDeepStrictEqual(existingSessionData, mergedSessionData)) {
             options.session.data = mergedSessionData;
             sessionChanged = true;
         } else if (!options.session.data) {
@@ -775,26 +772,6 @@ export class BotRuntime {
                 options.session,
             );
         }
-    }
-
-    /**
-     * Determines whether the cached session contains any meaningful progress
-     * and therefore requires hydration from persistence.
-     */
-    private shouldHydrateSessionFromPersistence(
-        session: IChatSessionState,
-    ): boolean {
-        const hasPage = session.pageId !== undefined && session.pageId !== null;
-        if (hasPage) {
-            return false;
-        }
-
-        const data = session.data;
-        if (!data || typeof data !== 'object') {
-            return true;
-        }
-
-        return Object.keys(data).length === 0;
     }
 
     /**
