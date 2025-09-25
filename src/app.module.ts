@@ -8,6 +8,7 @@ import {
     BOT_BUILDER_PRISMA,
 } from './app.constants';
 import { BuilderService } from './builder/builder.service';
+import { BotRegistryService } from './builder/bot-registry.service';
 import { IBotRuntimeOptions, normalizeBotOptions } from './builder/bot-runtime';
 
 const BOT_BUILDER_BOTS_REGISTRATION = Symbol('BOT_BUILDER_BOTS_REGISTRATION');
@@ -30,11 +31,13 @@ export class BotBuilder {
                 asyncOptions,
                 BuilderService,
                 botsRegistration,
+                BotRegistryService,
                 prismaProvider,
             ],
             exports: [
                 BotBuilder,
                 BuilderService,
+                BotRegistryService,
                 BOT_BUILDER_MODULE_OPTIONS,
                 BOT_BUILDER_PRISMA,
             ],

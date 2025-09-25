@@ -208,6 +208,20 @@ export interface IBotRuntimeMessages {
 
 export type TBotRuntimeMessageOverrides = Partial<IBotRuntimeMessages>;
 
+export interface IBotRegistryMetadata {
+    id: string;
+    slug?: string;
+    tokenPreview?: string;
+    pages: number;
+    handlers: number;
+    middlewares: number;
+    pageMiddlewares: number;
+    keyboards: number;
+    services: string[];
+    hasPersistence: boolean;
+    hasCustomSessionStorage: boolean;
+}
+
 export interface IBotBuilderOptions {
     TG_BOT_TOKEN: string;
     id?: string;

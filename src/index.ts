@@ -1,5 +1,6 @@
 export { BotBuilder } from './app.module';
 export { BuilderService } from './builder/builder.service';
+export { BotRegistryService } from './builder/bot-registry.service';
 export {
     BotRuntime,
     IBotRuntimeOptions,
@@ -55,6 +56,7 @@ export {
     IBotMiddlewareConfig,
     IBotMiddlewareContext,
     IBotPage,
+    IBotRegistryMetadata,
     IBotPageContentPayload,
     IBotPageValidateResult,
     IBotPageMiddlewareConfig,

@@ -84,6 +84,48 @@ export class BuilderService {
     }
 
     /**
+     * Returns shallow clones of the runtime options for every registered bot,
+     * preserving array references to avoid accidental external mutations.
+     */
+    public listRegisteredBots(): IBotRuntimeOptions[] {
+        return Array.from(this.botOptions.values()).map((options) =>
+            this.cloneRuntimeOptions(options),
+        );
+    }
+
+    /**
+     * Retrieves a cloned snapshot of the runtime options for the requested bot
+     * id, or undefined when the bot is not registered.
+     */
+    public getBotOptions(botId: string): IBotRuntimeOptions | undefined {
+        const options = this.botOptions.get(botId);
+        return options ? this.cloneRuntimeOptions(options) : undefined;
+    }
+
+    /**
+     * Returns the Telegram runtime bound to the provided bot identifier if it
+     * is currently active.
+     */
+    public getBotRuntime(botId: string): BotRuntime | undefined {
+        return this.bots.get(botId);
+    }
+
+    /**
+     * Exposes the live Telegram bot instance associated with the identifier so
+     * callers can invoke node-telegram-bot-api methods directly.
+     */
+    public getBotInstance(botId: string): TelegramBot | undefined {
+        return this.botInstances.get(botId);
+    }
+
+    /**
+     * Lists the identifiers for all currently registered bot runtimes.
+     */
+    public getRegisteredBotIds(): string[] {
+        return Array.from(this.bots.keys());
+    }
+
+    /**
      * Stops and removes the runtime associated with the provided bot id if it
      * is currently registered.
      */
@@ -138,5 +180,17 @@ export class BuilderService {
         }
 
         this.tokenToBotId.delete(token);
+    }
+
+    private cloneRuntimeOptions(options: IBotRuntimeOptions): IBotRuntimeOptions {
+        return {
+            ...options,
+            pages: [...(options.pages ?? [])],
+            handlers: [...(options.handlers ?? [])],
+            middlewares: [...(options.middlewares ?? [])],
+            keyboards: [...(options.keyboards ?? [])],
+            services: { ...(options.services ?? {}) },
+            pageMiddlewares: [...(options.pageMiddlewares ?? [])],
+        };
     }
 }
