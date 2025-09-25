@@ -182,7 +182,9 @@ export class BuilderService {
         this.tokenToBotId.delete(token);
     }
 
-    private cloneRuntimeOptions(options: IBotRuntimeOptions): IBotRuntimeOptions {
+    private cloneRuntimeOptions(
+        options: IBotRuntimeOptions,
+    ): IBotRuntimeOptions {
         return {
             ...options,
             pages: [...(options.pages ?? [])],

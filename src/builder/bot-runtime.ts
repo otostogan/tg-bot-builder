@@ -234,7 +234,10 @@ export class BotRuntime {
             >({
                 event: handler.event,
                 middlewares: combinedMiddlewares,
-                handler: async (...args) => {
+                handler: async (
+                    ...args: Parameters<typeof handler.listener>
+                ) => {
+                    // @ts-ignore
                     await Promise.resolve(handler.listener(...args));
                 },
                 contextFactory: (event, args) =>
@@ -747,9 +750,7 @@ export class BotRuntime {
             sessionChanged = true;
         }
 
-        if (
-            !isDeepStrictEqual(options.session.data ?? {}, mergedSessionData)
-        ) {
+        if (!isDeepStrictEqual(options.session.data ?? {}, mergedSessionData)) {
             options.session.data = mergedSessionData;
             sessionChanged = true;
         } else if (!options.session.data) {
