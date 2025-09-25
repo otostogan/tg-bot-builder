@@ -48,6 +48,8 @@ export {
     BOT_BUILDER_PRISMA,
 } from './app.constants';
 export {
+    IPrismaUser,
+    IPrismaStepState,
     IBotBuilderModuleAsyncOptions,
     IBotBuilderOptions,
     IBotBuilderContext,

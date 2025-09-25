@@ -322,17 +322,21 @@ class ExistingModelsGateway implements IPersistenceGateway {
             },
         });
 
+        const targetPageId = currentPageId ?? session.pageId;
+
         const stepState = await this.db.stepState.upsert({
             where: { userId_slug: { userId: user.id, slug: this.slug } },
             update: {
                 chatId: chatIdentifier,
-                currentPage: currentPageId ?? session.pageId ?? null,
+                ...(targetPageId !== undefined
+                    ? { currentPage: targetPageId }
+                    : {}),
             },
             create: {
                 userId: user.id,
                 chatId: chatIdentifier,
                 slug: this.slug,
-                currentPage: null,
+                currentPage: targetPageId ?? null,
                 answers: session.data ?? {},
                 history: [],
             },
