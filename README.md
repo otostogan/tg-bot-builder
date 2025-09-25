@@ -145,7 +145,6 @@ model User {
   updatedAt    DateTime    @updatedAt
   stepStates   StepState[]
   formEntries  FormEntry[]
-  Wallet       Wallet[]
 }
 
 model StepState {
