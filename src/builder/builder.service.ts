@@ -74,6 +74,7 @@ export class BuilderService {
             options,
             this.logger,
             this.prismaService,
+            options.dependencies ? { ...options.dependencies } : undefined,
         );
         this.bots.set(botId, runtime);
         this.botInstances.set(botId, runtime.bot);
