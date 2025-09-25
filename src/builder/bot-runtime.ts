@@ -93,6 +93,11 @@ export function normalizeBotOptions(
         throw new Error(DEFAULT_BOT_RUNTIME_MESSAGES.botIdResolutionFailed());
     }
 
+    const dependencies =
+        options.dependencies !== undefined
+            ? { ...options.dependencies }
+            : undefined;
+
     return {
         ...options,
         id: fallbackId,
@@ -103,6 +108,7 @@ export function normalizeBotOptions(
         services,
         pageMiddlewares,
         slug,
+        dependencies,
     } as IBotRuntimeOptions;
 }
 
@@ -151,8 +157,13 @@ export class BotRuntime {
         this.bot = new TelegramBot(this.token, { polling: true });
         this.logger = logger;
 
+        const resolvedDependencies = {
+            ...dependencies,
+            ...(options.dependencies ?? {}),
+        };
+
         const messageFactory =
-            dependencies.messageFactory ?? createBotRuntimeMessages;
+            resolvedDependencies.messageFactory ?? createBotRuntimeMessages;
         this.messages = messageFactory(options.messages);
 
         this.helperServices = options.services ?? {};
@@ -165,21 +176,22 @@ export class BotRuntime {
             | undefined;
 
         const sessionManagerFactory =
-            dependencies.sessionManagerFactory ?? createSessionManager;
+            resolvedDependencies.sessionManagerFactory ?? createSessionManager;
         this.sessionManager = sessionManagerFactory({
             sessionStorage: providedSessionStorage,
         });
 
         const prisma = options.prisma ?? prismaService;
         const persistenceGatewayFactory =
-            dependencies.persistenceGatewayFactory ?? createPersistenceGateway;
+            resolvedDependencies.persistenceGatewayFactory ??
+            createPersistenceGateway;
         this.persistenceGateway = persistenceGatewayFactory({
             prisma,
             slug: options.slug ?? 'default',
         });
 
         const pageNavigatorFactory =
-            dependencies.pageNavigatorFactory ?? createPageNavigator;
+            resolvedDependencies.pageNavigatorFactory ?? createPageNavigator;
         this.pageNavigator = pageNavigatorFactory({
             bot: this.bot,
             logger: this.logger,

@@ -193,6 +193,9 @@ export class BuilderService {
             keyboards: [...(options.keyboards ?? [])],
             services: { ...(options.services ?? {}) },
             pageMiddlewares: [...(options.pageMiddlewares ?? [])],
+            dependencies: options.dependencies
+                ? { ...options.dependencies }
+                : undefined,
         };
     }
 }

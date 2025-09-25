@@ -180,6 +180,224 @@ export class SurveyModule {}
 
 The Prisma gateway will automatically upsert the Telegram user, persist each page submission through `persistStepProgress`, and expose the hydrated database state on `ctx.db`. You can read or mutate `ctx.db.user` / `ctx.db.stepState` from within page callbacks, handlers, or middlewares to build multi-step funnels backed by your relational data.
 
+## Adapting to existing Prisma models
+
+Projects that already ship with their own Prisma models for users and step state can keep those schemas untouched by injecting a custom `IPersistenceGateway`. The builder exposes a `dependencies.persistenceGatewayFactory` hook that lets you supply an adapter which translates between your schema and the minimal `IPrismaUser` / `IPrismaStepState` interfaces used by the runtime.
+
+```ts
+import { Module } from '@nestjs/common';
+import { PrismaClient } from '@prisma/client';
+import TelegramBot from 'node-telegram-bot-api';
+import {
+    BotBuilder,
+    IBotBuilderOptions,
+    IBotPage,
+    IBotSessionState,
+    IPersistenceGateway,
+    IPrismaStepState,
+    IPrismaUser,
+} from 'tg-bot-builder';
+
+const prisma = new PrismaClient();
+
+interface ExistingUser {
+    id: number;
+    telegramId: bigint;
+    channelId: string;
+    nickname: string | null;
+    locale: string | null;
+    firstName: string | null;
+    lastName: string | null;
+}
+
+interface ExistingFlowState {
+    id: number;
+    accountId: number;
+    channelId: string;
+    slug: string;
+    currentStep: string | null;
+    answers: unknown;
+    history: unknown;
+}
+
+type SessionSnapshot = {
+    pageId?: string;
+    data?: IBotSessionState;
+    user?: TelegramBot.User;
+};
+
+class ExistingModelsGateway implements IPersistenceGateway {
+    public readonly prisma?: PrismaClient;
+
+    constructor(private readonly db: PrismaClient, private readonly slug: string) {
+        this.prisma = db;
+    }
+
+    public async ensureDatabaseState(
+        chatId: TelegramBot.ChatId,
+        session: SessionSnapshot,
+        message?: TelegramBot.Message,
+        currentPageId?: string,
+    ): Promise<{
+        user?: IPrismaUser;
+        stepState?: IPrismaStepState;
+    }> {
+        const telegramUser = message?.from ?? session.user;
+        if (!telegramUser) {
+            return {};
+        }
+
+        const chatIdentifier = chatId.toString();
+
+        const user = await this.db.account.upsert({
+            where: { telegramId: BigInt(telegramUser.id) },
+            update: {
+                channelId: chatIdentifier,
+                nickname: telegramUser.username ?? undefined,
+                firstName: telegramUser.first_name ?? undefined,
+                lastName: telegramUser.last_name ?? undefined,
+                locale: telegramUser.language_code ?? undefined,
+            },
+            create: {
+                telegramId: BigInt(telegramUser.id),
+                channelId: chatIdentifier,
+                nickname: telegramUser.username,
+                firstName: telegramUser.first_name,
+                lastName: telegramUser.last_name,
+                locale: telegramUser.language_code,
+            },
+        });
+
+        const flowState = await this.db.botFlowState.upsert({
+            where: { accountId_slug: { accountId: user.id, slug: this.slug } },
+            update: {
+                channelId: chatIdentifier,
+                currentStep: currentPageId ?? session.pageId ?? null,
+            },
+            create: {
+                accountId: user.id,
+                channelId: user.channelId,
+                slug: this.slug,
+                currentStep: null,
+                answers: {},
+                history: [],
+            },
+        });
+
+        return {
+            user: this.mapUser(user as ExistingUser),
+            stepState: this.mapState(flowState as ExistingFlowState),
+        };
+    }
+
+    public async persistStepProgress(
+        stepState: IPrismaStepState | undefined,
+        pageId: string,
+        value: unknown,
+    ): Promise<IPrismaStepState | undefined> {
+        if (!stepState) {
+            return stepState;
+        }
+
+        const updated = await this.db.botFlowState.update({
+            where: { id: stepState.id },
+            data: {
+                currentStep: pageId,
+                answers: {
+                    ...(stepState.answers as Record<string, unknown>),
+                    [pageId]: value,
+                },
+                history: [
+                    ...(stepState.history as unknown[]),
+                    { pageId, value, committedAt: new Date().toISOString() },
+                ],
+            },
+        });
+
+        return this.mapState(updated as ExistingFlowState);
+    }
+
+    public async updateStepStateCurrentPage(
+        stepState: IPrismaStepState | undefined,
+        pageId: string | undefined,
+    ): Promise<IPrismaStepState | undefined> {
+        if (!stepState || pageId === undefined) {
+            return stepState;
+        }
+
+        const updated = await this.db.botFlowState.update({
+            where: { id: stepState.id },
+            data: { currentStep: pageId },
+        });
+
+        return this.mapState(updated as ExistingFlowState);
+    }
+
+    public async syncSessionState(
+        stepState: IPrismaStepState | undefined,
+        sessionData: IBotSessionState,
+    ): Promise<IPrismaStepState | undefined> {
+        if (!stepState) {
+            return stepState;
+        }
+
+        const updated = await this.db.botFlowState.update({
+            where: { id: stepState.id },
+            data: { answers: sessionData },
+        });
+
+        return this.mapState(updated as ExistingFlowState);
+    }
+
+    private mapUser(user: ExistingUser): IPrismaUser {
+        return {
+            id: user.id,
+            telegramId: user.telegramId,
+            chatId: user.channelId,
+            username: user.nickname,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            languageCode: user.locale,
+        };
+    }
+
+    private mapState(state: ExistingFlowState): IPrismaStepState {
+        return {
+            id: state.id,
+            userId: state.accountId,
+            chatId: state.channelId,
+            slug: state.slug,
+            currentPage: state.currentStep,
+            answers: state.answers,
+            history: state.history,
+        };
+    }
+}
+
+const onboardingPages: IBotPage[] = [];
+
+@Module({
+    imports: [
+        BotBuilder.forRootAsync({
+            useFactory: async (): Promise<IBotBuilderOptions[]> => [
+                {
+                    TG_BOT_TOKEN: process.env.TG_TOKEN!,
+                    slug: 'onboarding',
+                    pages: onboardingPages,
+                    dependencies: {
+                        persistenceGatewayFactory: ({ prisma: client, slug }) =>
+                            new ExistingModelsGateway(client ?? prisma, slug),
+                    },
+                },
+            ],
+        }),
+    ],
+})
+export class AppModule {}
+```
+
+The factory receives the Prisma client and bot slug so the adapter can orchestrate any custom lookup or persistence logic. Because the gateway returns objects shaped like `IPrismaUser` and `IPrismaStepState`, the rest of the runtime keeps working without being aware of your domain-specific entities.
+
 ## Working without Prisma using a local store
 
 If you do not need database persistence, provide a custom `IBotSessionStorage` implementation (or rely on the built-in in-memory fallback) to keep session data in any store you like. The session manager will normalize entries into the `IChatSessionState` shape.
