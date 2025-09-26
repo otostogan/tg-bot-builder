@@ -250,6 +250,7 @@ export class BotRuntime {
                 handler: async (
                     ...args: Parameters<typeof handler.listener>
                 ) => {
+                    // @ts-expect-error - TS2345: Argument of type 'unknown[]' is not assignable to parameter of type 'unknown[]'.
                     await Promise.resolve(handler.listener(...args));
                 },
                 contextFactory: (event, args) =>
