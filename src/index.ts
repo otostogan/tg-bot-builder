@@ -43,11 +43,14 @@ export {
     normalizeHistory,
     serializeValue,
 } from './builder/utils/serialization';
+export { normalizeTelegramId, normalizeChatId } from './utils/serialization';
 export {
     BOT_BUILDER_MODULE_OPTIONS,
     BOT_BUILDER_PRISMA,
 } from './app.constants';
 export {
+    IPrismaUser,
+    IPrismaStepState,
     IBotBuilderModuleAsyncOptions,
     IBotBuilderOptions,
     IBotBuilderContext,

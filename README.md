@@ -128,6 +128,59 @@ All getters return clones of the stored data, keeping the underlying maps immuta
 
 When a Prisma client is supplied, the runtime enables persistent chat history by way of the `PrismaPersistenceGateway`. Pass a configured `PrismaClient` and a `slug` so every bot stores its own answers and step history.
 
+### Prisma models expected by the built-in gateway
+
+Out of the box the gateway assumes the following Prisma schema. If you do not already have conflicting models, add these three entities to your `schema.prisma` so the runtime can store users, step state snapshots, and form submissions:
+
+```prisma
+model User {
+  id           Int         @id @default(autoincrement())
+  telegramId   BigInt      @unique
+  chatId       String?
+  username     String?
+  firstName    String?
+  lastName     String?
+  languageCode String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  stepStates   StepState[]
+  formEntries  FormEntry[]
+  Wallet       Wallet[]
+}
+
+model StepState {
+  id          Int         @id @default(autoincrement())
+  userId      Int
+  chatId      String
+  slug        String
+  currentPage String?
+  answers     Json?
+  history     Json?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  formEntries FormEntry[]
+
+  @@unique([userId, slug])
+}
+
+model FormEntry {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  stepStateId Int
+  slug        String
+  pageId      String
+  payload     Json
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stepState   StepState @relation(fields: [stepStateId], references: [id], onDelete: Cascade)
+
+  @@unique([stepStateId, pageId])
+}
+```
+
+If your project already defines its own models, consider the adapter approach described below to map existing entities into the shapes required by the builder.
+
 ```ts
 import { Module } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
@@ -179,6 +232,254 @@ export class SurveyModule {}
 ```
 
 The Prisma gateway will automatically upsert the Telegram user, persist each page submission through `persistStepProgress`, and expose the hydrated database state on `ctx.db`. You can read or mutate `ctx.db.user` / `ctx.db.stepState` from within page callbacks, handlers, or middlewares to build multi-step funnels backed by your relational data.
+
+## Adapting to existing Prisma models
+
+Projects that already ship with their own Prisma models for users and step state can keep those schemas untouched by injecting a custom `IPersistenceGateway`. The builder exposes a `dependencies.persistenceGatewayFactory` hook that lets you supply an adapter which translates between your schema and the minimal `IPrismaUser` / `IPrismaStepState` interfaces used by the runtime.
+
+```ts
+import { Module } from '@nestjs/common';
+import { PrismaClient } from '@prisma/client';
+import TelegramBot from 'node-telegram-bot-api';
+import {
+    BotBuilder,
+    IBotBuilderOptions,
+    IBotPage,
+    IBotSessionState,
+    IPersistenceGateway,
+    IPrismaStepState,
+    IPrismaUser,
+} from 'tg-bot-builder';
+
+const prisma = new PrismaClient();
+
+interface ExistingUser {
+    id: number;
+    telegramId: bigint;
+    chatId: string | null;
+    username: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    languageCode: string | null;
+}
+
+interface ExistingStepState {
+    id: number;
+    userId: number;
+    chatId: string;
+    slug: string;
+    currentPage: string | null;
+    answers: unknown;
+    history: unknown;
+}
+
+type SessionSnapshot = {
+    pageId?: string;
+    data?: IBotSessionState;
+    user?: TelegramBot.User;
+};
+
+class ExistingModelsGateway implements IPersistenceGateway {
+    public readonly prisma?: PrismaClient;
+
+    constructor(private readonly db: PrismaClient, private readonly slug: string) {
+        this.prisma = db;
+    }
+
+    public async ensureDatabaseState(
+        chatId: TelegramBot.ChatId,
+        session: SessionSnapshot,
+        message?: TelegramBot.Message,
+        currentPageId?: string,
+    ): Promise<{
+        user?: IPrismaUser;
+        stepState?: IPrismaStepState;
+    }> {
+        const telegramUser = message?.from ?? session.user;
+        if (!telegramUser) {
+            return {};
+        }
+
+        const chatIdentifier = chatId.toString();
+        const telegramId = BigInt(telegramUser.id);
+
+        const user = await this.db.user.upsert({
+            where: { telegramId },
+            update: {
+                chatId: chatIdentifier,
+                username: telegramUser.username ?? undefined,
+                firstName: telegramUser.first_name ?? undefined,
+                lastName: telegramUser.last_name ?? undefined,
+                languageCode: telegramUser.language_code ?? undefined,
+            },
+            create: {
+                telegramId,
+                chatId: chatIdentifier,
+                username: telegramUser.username,
+                firstName: telegramUser.first_name,
+                lastName: telegramUser.last_name,
+                languageCode: telegramUser.language_code,
+            },
+        });
+
+        const targetPageId = currentPageId ?? session.pageId;
+
+        const stepState = await this.db.stepState.upsert({
+            where: { userId_slug: { userId: user.id, slug: this.slug } },
+            update: {
+                chatId: chatIdentifier,
+                ...(targetPageId !== undefined
+                    ? { currentPage: targetPageId }
+                    : {}),
+            },
+            create: {
+                userId: user.id,
+                chatId: chatIdentifier,
+                slug: this.slug,
+                currentPage: targetPageId ?? null,
+                answers: session.data ?? {},
+                history: [],
+            },
+        });
+
+        return {
+            user: this.mapUser(user as ExistingUser),
+            stepState: this.mapState(stepState as ExistingStepState),
+        };
+    }
+
+    public async persistStepProgress(
+        stepState: IPrismaStepState | undefined,
+        pageId: string,
+        value: unknown,
+    ): Promise<IPrismaStepState | undefined> {
+        if (!stepState) {
+            return stepState;
+        }
+
+        const previousHistory = Array.isArray(stepState.history)
+            ? stepState.history
+            : [];
+        const previousAnswers =
+            typeof stepState.answers === 'object' && stepState.answers !== null
+                ? (stepState.answers as Record<string, unknown>)
+                : {};
+
+        const updated = await this.db.stepState.update({
+            where: { id: stepState.id },
+            data: {
+                currentPage: pageId,
+                answers: {
+                    ...previousAnswers,
+                    [pageId]: value,
+                },
+                history: [
+                    ...previousHistory,
+                    { pageId, value, committedAt: new Date().toISOString() },
+                ],
+            },
+        });
+
+        await this.db.formEntry.upsert({
+            where: {
+                stepStateId_pageId: {
+                    stepStateId: updated.id,
+                    pageId,
+                },
+            },
+            update: { payload: value },
+            create: {
+                userId: updated.userId,
+                stepStateId: updated.id,
+                slug: updated.slug,
+                pageId,
+                payload: value,
+            },
+        });
+
+        return this.mapState(updated as ExistingStepState);
+    }
+
+    public async updateStepStateCurrentPage(
+        stepState: IPrismaStepState | undefined,
+        pageId: string | undefined,
+    ): Promise<IPrismaStepState | undefined> {
+        if (!stepState || pageId === undefined) {
+            return stepState;
+        }
+
+        const updated = await this.db.stepState.update({
+            where: { id: stepState.id },
+            data: { currentPage: pageId ?? null },
+        });
+
+        return this.mapState(updated as ExistingStepState);
+    }
+
+    public async syncSessionState(
+        stepState: IPrismaStepState | undefined,
+        sessionData: IBotSessionState,
+    ): Promise<IPrismaStepState | undefined> {
+        if (!stepState) {
+            return stepState;
+        }
+
+        const updated = await this.db.stepState.update({
+            where: { id: stepState.id },
+            data: { answers: sessionData },
+        });
+
+        return this.mapState(updated as ExistingStepState);
+    }
+
+    private mapUser(user: ExistingUser): IPrismaUser {
+        return {
+            id: user.id,
+            telegramId: user.telegramId,
+            chatId: user.chatId,
+            username: user.username,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            languageCode: user.languageCode,
+        };
+    }
+
+    private mapState(state: ExistingStepState): IPrismaStepState {
+        return {
+            id: state.id,
+            userId: state.userId,
+            chatId: state.chatId,
+            slug: state.slug,
+            currentPage: state.currentPage,
+            answers: state.answers,
+            history: state.history,
+        };
+    }
+}
+
+const onboardingPages: IBotPage[] = [];
+
+@Module({
+    imports: [
+        BotBuilder.forRootAsync({
+            useFactory: async (): Promise<IBotBuilderOptions[]> => [
+                {
+                    TG_BOT_TOKEN: process.env.TG_TOKEN!,
+                    slug: 'onboarding',
+                    pages: onboardingPages,
+                    dependencies: {
+                        persistenceGatewayFactory: ({ prisma: client, slug }) =>
+                            new ExistingModelsGateway(client ?? prisma, slug),
+                    },
+                },
+            ],
+        }),
+    ],
+})
+export class AppModule {}
+```
+
+The factory receives the Prisma client and bot slug so the adapter can orchestrate any custom lookup or persistence logic. Because the gateway returns objects shaped like `IPrismaUser` and `IPrismaStepState`, the rest of the runtime keeps working without being aware of your domain-specific entities.
 
 ## Working without Prisma using a local store
 

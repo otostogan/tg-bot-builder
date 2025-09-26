@@ -70,18 +70,6 @@ export class SessionManager {
     }
 
     /**
-     * Removes the chat session from cache and underlying storage when
-     * supported by the backend.
-     */
-    public async deleteSession(chatId: TelegramBot.ChatId): Promise<void> {
-        const key = chatId.toString();
-        this.sessionCache.delete(key);
-        if (this.sessionStorage.delete) {
-            await this.sessionStorage.delete(chatId);
-        }
-    }
-
-    /**
      * Transforms stored session representations into the shape expected by the
      * runtime, supporting both legacy and new formats.
      */

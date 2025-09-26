@@ -73,8 +73,9 @@ export class BuilderService {
         const runtime = new BotRuntime(
             options,
             this.logger,
-            this.prismaService,
+            options.dependencies,
         );
+
         this.bots.set(botId, runtime);
         this.botInstances.set(botId, runtime.bot);
         this.botOptions.set(botId, options);
@@ -116,13 +117,6 @@ export class BuilderService {
      */
     public getBotInstance(botId: string): TelegramBot | undefined {
         return this.botInstances.get(botId);
-    }
-
-    /**
-     * Lists the identifiers for all currently registered bot runtimes.
-     */
-    public getRegisteredBotIds(): string[] {
-        return Array.from(this.bots.keys());
     }
 
     /**
@@ -193,6 +187,9 @@ export class BuilderService {
             keyboards: [...(options.keyboards ?? [])],
             services: { ...(options.services ?? {}) },
             pageMiddlewares: [...(options.pageMiddlewares ?? [])],
+            dependencies: options.dependencies
+                ? { ...options.dependencies }
+                : undefined,
         };
     }
 }

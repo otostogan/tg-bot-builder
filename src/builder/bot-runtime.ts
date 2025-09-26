@@ -12,7 +12,6 @@ import {
     TBotPageIdentifier,
 } from '../app.interface';
 import TelegramBot = require('node-telegram-bot-api');
-import type { PrismaClient } from '@prisma/client/extension';
 import {
     BotRuntimeMessageFactory,
     DEFAULT_BOT_RUNTIME_MESSAGES,
@@ -44,10 +43,17 @@ import { Logger } from '@nestjs/common';
 import { normalizeAnswers } from './utils/serialization';
 import { isDeepStrictEqual } from 'util';
 
+type ContextFactoryOverrides = Partial<
+    Pick<IBuilderContextOptions, 'message' | 'metadata' | 'user'>
+>;
+
+type ContextFactory = (
+    overrides?: ContextFactoryOverrides,
+) => IBotBuilderContext;
+
 export interface IBotRuntimeOptions extends IBotBuilderOptions {
     id: string;
 }
-
 export interface BotRuntimeDependencies {
     pageNavigatorFactory?: (
         options: PageNavigatorFactoryOptions,
@@ -63,6 +69,14 @@ export interface BotRuntimeDependencies {
      * message builders while preserving defaults via {@link createBotRuntimeMessages}.
      */
     messageFactory?: BotRuntimeMessageFactory;
+}
+export interface IBuilderContextOptions {
+    chatId: TelegramBot.ChatId;
+    session: IChatSessionState;
+    message?: TelegramBot.Message;
+    metadata?: TelegramBot.Metadata;
+    user?: TelegramBot.User;
+    database?: IContextDatabaseState;
 }
 
 /**
@@ -93,6 +107,11 @@ export function normalizeBotOptions(
         throw new Error(DEFAULT_BOT_RUNTIME_MESSAGES.botIdResolutionFailed());
     }
 
+    const dependencies =
+        options.dependencies !== undefined
+            ? { ...options.dependencies }
+            : undefined;
+
     return {
         ...options,
         id: fallbackId,
@@ -103,25 +122,9 @@ export function normalizeBotOptions(
         services,
         pageMiddlewares,
         slug,
+        dependencies,
     } as IBotRuntimeOptions;
 }
-
-interface IBuilderContextOptions {
-    chatId: TelegramBot.ChatId;
-    session: IChatSessionState;
-    message?: TelegramBot.Message;
-    metadata?: TelegramBot.Metadata;
-    user?: TelegramBot.User;
-    database?: IContextDatabaseState;
-}
-
-type ContextFactoryOverrides = Partial<
-    Pick<IBuilderContextOptions, 'message' | 'metadata' | 'user'>
->;
-
-type ContextFactory = (
-    overrides?: ContextFactoryOverrides,
-) => IBotBuilderContext;
 
 export class BotRuntime {
     public readonly id: string;
@@ -143,7 +146,6 @@ export class BotRuntime {
     constructor(
         options: IBotRuntimeOptions,
         logger: Logger,
-        prismaService?: PrismaClient,
         dependencies: BotRuntimeDependencies = {},
     ) {
         this.id = options.id;
@@ -151,8 +153,14 @@ export class BotRuntime {
         this.bot = new TelegramBot(this.token, { polling: true });
         this.logger = logger;
 
+        const resolvedDependencies = {
+            ...dependencies,
+            ...(options.dependencies ?? {}),
+        };
+
         const messageFactory =
-            dependencies.messageFactory ?? createBotRuntimeMessages;
+            resolvedDependencies.messageFactory ?? createBotRuntimeMessages;
+
         this.messages = messageFactory(options.messages);
 
         this.helperServices = options.services ?? {};
@@ -165,21 +173,26 @@ export class BotRuntime {
             | undefined;
 
         const sessionManagerFactory =
-            dependencies.sessionManagerFactory ?? createSessionManager;
+            resolvedDependencies.sessionManagerFactory ?? createSessionManager;
+
         this.sessionManager = sessionManagerFactory({
             sessionStorage: providedSessionStorage,
         });
 
-        const prisma = options.prisma ?? prismaService;
+        const prisma = options.prisma;
+
         const persistenceGatewayFactory =
-            dependencies.persistenceGatewayFactory ?? createPersistenceGateway;
+            resolvedDependencies.persistenceGatewayFactory ??
+            createPersistenceGateway;
+
         this.persistenceGateway = persistenceGatewayFactory({
             prisma,
             slug: options.slug ?? 'default',
         });
 
         const pageNavigatorFactory =
-            dependencies.pageNavigatorFactory ?? createPageNavigator;
+            resolvedDependencies.pageNavigatorFactory ?? createPageNavigator;
+
         this.pageNavigator = pageNavigatorFactory({
             bot: this.bot,
             logger: this.logger,
@@ -237,7 +250,7 @@ export class BotRuntime {
                 handler: async (
                     ...args: Parameters<typeof handler.listener>
                 ) => {
-                    // @ts-ignore
+                    // @ts-expect-error - TS2345: Argument of type 'unknown[]' is not assignable to parameter of type 'Parameters<typeof handler.listener>'.
                     await Promise.resolve(handler.listener(...args));
                 },
                 contextFactory: (event, args) =>
@@ -622,18 +635,40 @@ export class BotRuntime {
             return;
         }
 
-        options.session.pageId = initialPage.id;
         options.session.data = options.session.data ?? {};
-        await this.sessionManager.saveSession(options.chatId, options.session);
 
-        const { buildContext } = await this.prepareContext({
+        const { database, buildContext } = await this.prepareContext({
             chatId: options.chatId,
             session: options.session,
             message: options.message,
             metadata: options.metadata,
         });
 
-        await this.pageNavigator.renderPage(initialPage, buildContext());
+        let targetPage: IBotPage | undefined;
+        if (options.session.pageId) {
+            targetPage = this.pageNavigator.resolvePage(options.session.pageId);
+        }
+
+        if (!targetPage) {
+            options.session.pageId = initialPage.id;
+            await this.sessionManager.saveSession(
+                options.chatId,
+                options.session,
+            );
+
+            const nextStepState =
+                await this.persistenceGateway.updateStepStateCurrentPage(
+                    database.stepState,
+                    initialPage.id,
+                );
+            if (nextStepState) {
+                database.stepState = nextStepState;
+            }
+
+            targetPage = initialPage;
+        }
+
+        await this.pageNavigator.renderPage(targetPage, buildContext());
     }
 
     /**
@@ -718,8 +753,8 @@ export class BotRuntime {
     }
 
     /**
-     * Rehydrates the in-memory session from Prisma when the cached session is
-     * empty, allowing conversations to resume after process restarts.
+     * Rehydrates the in-memory session from Prisma so chats always resume from
+     * the latest persisted step after process restarts or cache evictions.
      */
     private async hydrateSessionFromStepState(options: {
         chatId: TelegramBot.ChatId;
@@ -730,16 +765,16 @@ export class BotRuntime {
             return;
         }
 
-        if (!this.shouldHydrateSessionFromPersistence(options.session)) {
-            return;
-        }
-
         const persistedPageId = this.normalizePersistedPageId(
             options.stepState.currentPage,
         );
-        const persistedAnswers = normalizeAnswers(options.stepState.answers);
+        const persistedAnswers = normalizeAnswers(
+            options.stepState.answers,
+            null,
+        );
+        const existingSessionData = options.session.data ?? {};
         const mergedSessionData = {
-            ...(options.session.data ?? {}),
+            ...existingSessionData,
             ...persistedAnswers,
         } as IBotSessionState;
 
@@ -750,7 +785,7 @@ export class BotRuntime {
             sessionChanged = true;
         }
 
-        if (!isDeepStrictEqual(options.session.data ?? {}, mergedSessionData)) {
+        if (!isDeepStrictEqual(existingSessionData, mergedSessionData)) {
             options.session.data = mergedSessionData;
             sessionChanged = true;
         } else if (!options.session.data) {
@@ -763,26 +798,6 @@ export class BotRuntime {
                 options.session,
             );
         }
-    }
-
-    /**
-     * Determines whether the cached session contains any meaningful progress
-     * and therefore requires hydration from persistence.
-     */
-    private shouldHydrateSessionFromPersistence(
-        session: IChatSessionState,
-    ): boolean {
-        const hasPage = session.pageId !== undefined && session.pageId !== null;
-        if (hasPage) {
-            return false;
-        }
-
-        const data = session.data;
-        if (!data || typeof data !== 'object') {
-            return true;
-        }
-
-        return Object.keys(data).length === 0;
     }
 
     /**
