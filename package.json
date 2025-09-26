@@ -1,6 +1,6 @@
 {
     "name": "tg-bot-builder",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
     "description": "Modular NestJS builder for multi-step Telegram bots with Prisma persistence and pluggable session storage.",
