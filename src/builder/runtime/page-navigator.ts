@@ -295,6 +295,28 @@ export class PageNavigator {
         );
 
         if (!middlewareResult.allow) {
+            const redirectTarget = middlewareResult.redirectTo;
+            if (redirectTarget) {
+                if (redirectTarget === page.id) {
+                    this.options.logger.warn(
+                        `Page middleware for "${page.id}" attempted to redirect to the same page. Skipping redirect to avoid infinite loop.`,
+                    );
+                } else {
+                    const redirectPage = this.resolvePage(redirectTarget);
+                    if (redirectPage) {
+                        this.options.logger.log(
+                            `Redirecting chat ${context.chatId} from "${page.id}" to "${redirectPage.id}" due to middleware result`,
+                        );
+                        await this.renderPage(redirectPage, context);
+                        return;
+                    }
+
+                    this.options.logger.warn(
+                        `Page middleware requested redirect to unknown page "${redirectTarget}" while rendering "${page.id}"`,
+                    );
+                }
+            }
+
             const message =
                 middlewareResult.message ??
                 DEFAULT_PAGE_MIDDLEWARE_REJECTION_MESSAGE;
@@ -405,13 +427,29 @@ export class PageNavigator {
         }
 
         if (result && typeof result === 'object' && 'allow' in result) {
-            return {
+            const normalized: IBotPageMiddlewareResult = {
                 allow: Boolean(result.allow),
-                message:
-                    typeof result.message === 'string'
-                        ? result.message
-                        : undefined,
             };
+
+            if (
+                typeof result.message === 'string' &&
+                result.message.trim().length > 0
+            ) {
+                normalized.message = result.message.trim();
+            }
+
+            if ('redirectTo' in result) {
+                const redirectTo = (result as { redirectTo?: unknown })
+                    .redirectTo;
+                if (
+                    typeof redirectTo === 'string' &&
+                    redirectTo.trim().length > 0
+                ) {
+                    normalized.redirectTo = redirectTo.trim();
+                }
+            }
+
+            return normalized;
         }
 
         return { allow: true };
