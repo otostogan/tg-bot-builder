@@ -25,11 +25,11 @@ export interface PageNavigatorOptions {
     keyboards?: IBotKeyboardConfig[];
     pageMiddlewares?: IBotPageMiddlewareConfig[];
 }
-
 export interface IValidationResult {
     valid: boolean;
     errorMessage?: string;
 }
+export interface PageNavigatorFactoryOptions extends PageNavigatorOptions {}
 
 export class PageNavigator {
     private readonly pages: IBotPage[] = [];
@@ -47,7 +47,7 @@ export class PageNavigator {
     private initialPageId?: TBotPageIdentifier;
 
     /**
-     * Initializes lookup tables for pages, keyboards and middlewares using the
+     * Initializes lookup tables for pages, keyboards, and middlewares using the
      * provided runtime dependencies.
      */
     constructor(private readonly options: PageNavigatorOptions) {
@@ -474,8 +474,6 @@ export class PageNavigator {
         return undefined;
     }
 }
-
-export interface PageNavigatorFactoryOptions extends PageNavigatorOptions {}
 
 /**
  * Factory helper that instantiates the default page navigator implementation.

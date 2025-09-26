@@ -12,7 +12,6 @@ import {
     TBotPageIdentifier,
 } from '../app.interface';
 import TelegramBot = require('node-telegram-bot-api');
-import type { PrismaClient } from '@prisma/client/extension';
 import {
     BotRuntimeMessageFactory,
     DEFAULT_BOT_RUNTIME_MESSAGES,
@@ -44,10 +43,17 @@ import { Logger } from '@nestjs/common';
 import { normalizeAnswers } from './utils/serialization';
 import { isDeepStrictEqual } from 'util';
 
+type ContextFactoryOverrides = Partial<
+    Pick<IBuilderContextOptions, 'message' | 'metadata' | 'user'>
+>;
+
+type ContextFactory = (
+    overrides?: ContextFactoryOverrides,
+) => IBotBuilderContext;
+
 export interface IBotRuntimeOptions extends IBotBuilderOptions {
     id: string;
 }
-
 export interface BotRuntimeDependencies {
     pageNavigatorFactory?: (
         options: PageNavigatorFactoryOptions,
@@ -63,6 +69,14 @@ export interface BotRuntimeDependencies {
      * message builders while preserving defaults via {@link createBotRuntimeMessages}.
      */
     messageFactory?: BotRuntimeMessageFactory;
+}
+export interface IBuilderContextOptions {
+    chatId: TelegramBot.ChatId;
+    session: IChatSessionState;
+    message?: TelegramBot.Message;
+    metadata?: TelegramBot.Metadata;
+    user?: TelegramBot.User;
+    database?: IContextDatabaseState;
 }
 
 /**
@@ -112,23 +126,6 @@ export function normalizeBotOptions(
     } as IBotRuntimeOptions;
 }
 
-interface IBuilderContextOptions {
-    chatId: TelegramBot.ChatId;
-    session: IChatSessionState;
-    message?: TelegramBot.Message;
-    metadata?: TelegramBot.Metadata;
-    user?: TelegramBot.User;
-    database?: IContextDatabaseState;
-}
-
-type ContextFactoryOverrides = Partial<
-    Pick<IBuilderContextOptions, 'message' | 'metadata' | 'user'>
->;
-
-type ContextFactory = (
-    overrides?: ContextFactoryOverrides,
-) => IBotBuilderContext;
-
 export class BotRuntime {
     public readonly id: string;
     public readonly token: string;
@@ -149,7 +146,6 @@ export class BotRuntime {
     constructor(
         options: IBotRuntimeOptions,
         logger: Logger,
-        prismaService?: PrismaClient,
         dependencies: BotRuntimeDependencies = {},
     ) {
         this.id = options.id;
@@ -164,6 +160,7 @@ export class BotRuntime {
 
         const messageFactory =
             resolvedDependencies.messageFactory ?? createBotRuntimeMessages;
+
         this.messages = messageFactory(options.messages);
 
         this.helperServices = options.services ?? {};
@@ -177,14 +174,17 @@ export class BotRuntime {
 
         const sessionManagerFactory =
             resolvedDependencies.sessionManagerFactory ?? createSessionManager;
+
         this.sessionManager = sessionManagerFactory({
             sessionStorage: providedSessionStorage,
         });
 
-        const prisma = options.prisma ?? prismaService;
+        const prisma = options.prisma;
+
         const persistenceGatewayFactory =
             resolvedDependencies.persistenceGatewayFactory ??
             createPersistenceGateway;
+
         this.persistenceGateway = persistenceGatewayFactory({
             prisma,
             slug: options.slug ?? 'default',
@@ -192,6 +192,7 @@ export class BotRuntime {
 
         const pageNavigatorFactory =
             resolvedDependencies.pageNavigatorFactory ?? createPageNavigator;
+
         this.pageNavigator = pageNavigatorFactory({
             bot: this.bot,
             logger: this.logger,
@@ -249,7 +250,7 @@ export class BotRuntime {
                 handler: async (
                     ...args: Parameters<typeof handler.listener>
                 ) => {
-                    // @ts-ignore
+                    // @ts-expect-error - TS2345: Argument of type 'unknown[]' is not assignable to parameter of type 'Parameters<typeof handler.listener>'.
                     await Promise.resolve(handler.listener(...args));
                 },
                 contextFactory: (event, args) =>
@@ -767,7 +768,10 @@ export class BotRuntime {
         const persistedPageId = this.normalizePersistedPageId(
             options.stepState.currentPage,
         );
-        const persistedAnswers = normalizeAnswers(options.stepState.answers);
+        const persistedAnswers = normalizeAnswers(
+            options.stepState.answers,
+            null,
+        );
         const existingSessionData = options.session.data ?? {};
         const mergedSessionData = {
             ...existingSessionData,

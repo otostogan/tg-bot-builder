@@ -1,70 +1,81 @@
-import { TPrismaJsonValue } from '../../app.interface';
-
-export interface IStepHistoryEntry {
+export interface IStepHistoryEntry<T = unknown> {
     pageId: string;
-    value: TPrismaJsonValue | null;
     timestamp: string;
+    value: T | T[];
 }
 
 /**
  * Converts arbitrary values into a Prisma JSON-friendly representation while
  * preserving nested structures.
  */
-export const serializeValue = (value: unknown): TPrismaJsonValue | null => {
-    if (value === undefined) {
-        return null;
+export const serializeValue = <
+    T extends string | number | boolean | null | object | unknown[],
+>(
+    value: unknown,
+    nullValue: T,
+): T | Extract<T, object> | Extract<T, unknown[]> => {
+    if (value === undefined || value === null) {
+        return nullValue;
     }
 
     if (
-        value === null ||
         typeof value === 'string' ||
         typeof value === 'number' ||
         typeof value === 'boolean'
     ) {
-        return value as TPrismaJsonValue;
+        return value as T;
     }
 
     if (typeof value === 'bigint') {
-        return value.toString();
+        return value.toString() as T;
     }
 
     if (Array.isArray(value)) {
-        return value.map((item) => serializeValue(item)) as TPrismaJsonValue;
+        return value.map((item) => serializeValue(item, nullValue)) as Extract<
+            T,
+            unknown[]
+        >;
     }
 
     if (typeof value === 'object') {
         const entries = Object.entries(value as Record<string, unknown>);
-        const normalized: Record<string, TPrismaJsonValue | null> = {};
+        const normalized: Record<string, T> = {};
         for (const [key, item] of entries) {
-            normalized[key] = serializeValue(item);
+            normalized[key] = serializeValue(item, nullValue);
         }
-        return normalized as TPrismaJsonValue;
+        return normalized as Extract<T, object>;
     }
 
-    return null;
+    return nullValue;
 };
 
 /**
  * Produces a shallow copy of stored answers, ensuring the result is a record
  * even when invalid data is received.
  */
-export const normalizeAnswers = (
-    answers: unknown,
-): Record<string, TPrismaJsonValue | null> => {
+export const normalizeAnswers = <T>(answers: unknown, nullValue: T) => {
     if (!answers || typeof answers !== 'object' || Array.isArray(answers)) {
         return {};
     }
 
-    return {
-        ...(answers as Record<string, TPrismaJsonValue | null>),
-    };
+    const result: Record<string, T> = {};
+    for (const [key, value] of Object.entries(
+        answers as Record<string, unknown>,
+    )) {
+        result[key] = (value as T) ?? nullValue;
+    }
+
+    return result;
 };
 
 /**
  * Cleans up persisted history entries to a predictable shape and re-serializes
  * nested values.
  */
-export const normalizeHistory = (history: unknown): IStepHistoryEntry[] => {
+export const normalizeHistory = <T>(
+    history: unknown,
+    nullValue: T,
+): IStepHistoryEntry<T>[] => {
     if (!Array.isArray(history)) {
         return [];
     }
@@ -92,7 +103,8 @@ export const normalizeHistory = (history: unknown): IStepHistoryEntry[] => {
             return {
                 pageId,
                 timestamp,
-                value: serializeValue(entry.value),
+                // @ts-expect-error - TS2322: Type 'unknown' is not assignable to type 'T | T[]'.
+                value: serializeValue<T>(entry.value, nullValue),
             };
         });
 };

@@ -12,17 +12,19 @@ import {
     serializeValue,
 } from '../utils/serialization';
 import { isDeepStrictEqual } from 'util';
+import {
+    normalizeChatId,
+    normalizeTelegramId,
+} from '../../utils/serialization';
 
 export interface IContextDatabaseState {
     user?: IPrismaUser;
     stepState?: IPrismaStepState;
 }
-
 export interface PersistenceGatewayFactoryOptions {
     prisma?: PrismaClient;
     slug: string;
 }
-
 export interface IPersistenceGateway {
     readonly prisma?: PrismaClient;
     ensureDatabaseState(
@@ -45,8 +47,12 @@ export interface IPersistenceGateway {
         sessionData: IBotSessionState,
     ): Promise<IPrismaStepState | undefined>;
 }
+export interface PrismaPersistenceGatewayOptions {
+    prisma: PrismaClient;
+    slug: string;
+}
 
-class NoopPersistenceGateway implements IPersistenceGateway {
+export class NoopPersistenceGateway implements IPersistenceGateway {
     public readonly prisma = undefined;
 
     /**
@@ -79,17 +85,12 @@ class NoopPersistenceGateway implements IPersistenceGateway {
      */
     public async syncSessionState(
         stepState: IPrismaStepState | undefined,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         _sessionData: IBotSessionState,
     ): Promise<IPrismaStepState | undefined> {
         return stepState;
     }
 }
-
-export interface PrismaPersistenceGatewayOptions {
-    prisma: PrismaClient;
-    slug: string;
-}
-
 export class PrismaPersistenceGateway implements IPersistenceGateway {
     public readonly prisma: PrismaClient;
     private readonly slug: string;
@@ -117,8 +118,8 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
             return {};
         }
 
-        const telegramId = this.normalizeTelegramId(telegramUser.id);
-        const chatIdentifier = this.normalizeChatId(chatId);
+        const telegramId = normalizeTelegramId(telegramUser.id);
+        const chatIdentifier = normalizeChatId(chatId);
 
         const user = (await this.prisma.user.upsert({
             where: { telegramId },
@@ -157,8 +158,8 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
                     chatId: chatIdentifier,
                     slug: this.slug,
                     currentPage: targetPageId ?? null,
-                    answers: serializeValue(session.data ?? {}),
-                    history: serializeValue([]),
+                    answers: serializeValue(session.data ?? {}, null),
+                    history: serializeValue([], null),
                 },
             })) as unknown as IPrismaStepState;
         } else {
@@ -202,11 +203,11 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
             return stepState;
         }
 
-        const serializedValue = serializeValue(value);
-        const answers = normalizeAnswers(stepState.answers);
+        const serializedValue = serializeValue(value, null);
+        const answers = normalizeAnswers(stepState.answers, null);
         answers[pageId] = serializedValue;
 
-        const history = normalizeHistory(stepState.history);
+        const history = normalizeHistory(stepState.history, null);
         history.push({
             pageId,
             value: serializedValue,
@@ -255,9 +256,12 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
             return stepState;
         }
 
-        const serializedSession = serializeValue(sessionData ?? {});
-        const normalizedSession = normalizeAnswers(serializedSession ?? {});
-        const normalizedExisting = normalizeAnswers(stepState.answers);
+        const serializedSession = serializeValue(sessionData ?? {}, null);
+        const normalizedSession = normalizeAnswers(
+            serializedSession ?? {},
+            null,
+        );
+        const normalizedExisting = normalizeAnswers(stepState.answers, null);
 
         if (isDeepStrictEqual(normalizedExisting, normalizedSession)) {
             return stepState;
@@ -294,21 +298,6 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
                 currentPage: targetPage,
             },
         })) as unknown as IPrismaStepState;
-    }
-
-    /**
-     * Normalizes chat identifiers to a string for consistent storage.
-     */
-    private normalizeChatId(chatId: TelegramBot.ChatId): string {
-        return typeof chatId === 'string' ? chatId : chatId.toString();
-    }
-
-    /**
-     * Converts Telegram user identifiers into bigint form accepted by the
-     * database schema.
-     */
-    private normalizeTelegramId(id: number | string): bigint {
-        return typeof id === 'string' ? BigInt(id) : BigInt(id);
     }
 }
 
