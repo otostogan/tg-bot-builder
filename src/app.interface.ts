@@ -102,6 +102,7 @@ export interface IBotPage {
 export interface IBotPageMiddlewareResult {
     allow: boolean;
     message?: string;
+    redirectTo?: TBotPageIdentifier;
 }
 
 export interface IBotPageNavigationOptions {
