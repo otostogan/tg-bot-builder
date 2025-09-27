@@ -25,7 +25,7 @@ const DEFAULT_MESSAGES: IBotRuntimeMessages = {
         return `Error in middleware pipeline for event "${eventName}"`;
     },
     noInitialPage: () => 'No initial page configured',
-    validationFailed: () => 'Введены некорректные данные, попробуйте ещё раз.',
+    validationFailed: () => 'Incorrect data entered, please try again.',
 };
 
 export const DEFAULT_BOT_RUNTIME_MESSAGES: IBotRuntimeMessages = Object.freeze(
