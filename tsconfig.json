@@ -10,8 +10,9 @@
         "target": "ES2021",
         "sourceMap": true,
         "outDir": "./dist",
+        "rootDir": "./src",
         "baseUrl": "./",
-        "incremental": true,
+        "incremental": false,
         "skipLibCheck": true,
         "strictNullChecks": false,
         "noImplicitAny": false,
@@ -19,5 +20,6 @@
         "forceConsistentCasingInFileNames": false,
         "noFallthroughCasesInSwitch": false,
         "typeRoots": ["./types", "./node_modules/@types"]
-    }
+    },
+    "include": ["src"]
 }
