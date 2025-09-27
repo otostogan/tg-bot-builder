@@ -2,6 +2,16 @@ import 'reflect-metadata';
 
 type NestTesting = typeof import('@nestjs/testing');
 
+jest.mock('node-telegram-bot-api');
+
+const ORIGINAL_ENV = { ...process.env };
+const DEFAULT_TEST_ENV: NodeJS.ProcessEnv = {
+  ...ORIGINAL_ENV,
+  NODE_ENV: 'test',
+  TZ: 'UTC',
+  TG_BOT_TOKEN: process.env.TG_BOT_TOKEN ?? 'test-token',
+};
+
 jest.mock('@nestjs/testing', (): NestTesting => {
   const actual: NestTesting = jest.requireActual('@nestjs/testing');
   const patched = actual.Test.createTestingModule as typeof actual.Test.createTestingModule & {
@@ -25,10 +35,16 @@ jest.mock('@nestjs/testing', (): NestTesting => {
 });
 
 beforeEach(() => {
+  process.env = { ...DEFAULT_TEST_ENV } as NodeJS.ProcessEnv;
   jest.clearAllMocks();
 });
 
 afterEach(() => {
   jest.clearAllTimers();
   jest.useRealTimers();
+  process.env = { ...DEFAULT_TEST_ENV } as NodeJS.ProcessEnv;
+});
+
+afterAll(() => {
+  process.env = { ...ORIGINAL_ENV } as NodeJS.ProcessEnv;
 });
