@@ -288,7 +288,7 @@ export class PageNavigator {
     public async renderPage(
         page: IBotPage,
         context: IBotBuilderContext,
-    ): Promise<void> {
+    ): Promise<TBotPageIdentifier | undefined> {
         const middlewareResult = await this.executePageMiddlewares(
             page,
             context,
@@ -307,8 +307,7 @@ export class PageNavigator {
                         this.options.logger.log(
                             `Redirecting chat ${context.chatId} from "${page.id}" to "${redirectPage.id}" due to middleware result`,
                         );
-                        await this.renderPage(redirectPage, context);
-                        return;
+                        return await this.renderPage(redirectPage, context);
                     }
 
                     this.options.logger.warn(
@@ -326,7 +325,7 @@ export class PageNavigator {
             );
 
             await this.options.bot.sendMessage(context.chatId, message);
-            return;
+            return page.id;
         }
 
         const payload = await this.resolvePageContent(page.content, context);
@@ -343,6 +342,8 @@ export class PageNavigator {
         await this.options.bot.sendMessage(context.chatId, payload.text, {
             ...options,
         });
+
+        return page.id;
     }
 
     /**

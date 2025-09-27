@@ -327,6 +327,8 @@ export class BotRuntime {
                     chatId,
                     page: currentPage,
                     errorMessage: validationResult.errorMessage,
+                    session,
+                    database,
                     buildContext,
                 });
                 return;
@@ -649,8 +651,25 @@ export class BotRuntime {
             targetPage = this.pageNavigator.resolvePage(options.session.pageId);
         }
 
+        let shouldPersistPageChange = false;
         if (!targetPage) {
             options.session.pageId = initialPage.id;
+            shouldPersistPageChange = true;
+            targetPage = initialPage;
+        }
+
+        const renderedPageId = await this.pageNavigator.renderPage(
+            targetPage,
+            buildContext(),
+        );
+        const finalPageId = renderedPageId ?? targetPage.id;
+
+        if (options.session.pageId !== finalPageId) {
+            options.session.pageId = finalPageId;
+            shouldPersistPageChange = true;
+        }
+
+        if (shouldPersistPageChange) {
             await this.sessionManager.saveSession(
                 options.chatId,
                 options.session,
@@ -659,16 +678,12 @@ export class BotRuntime {
             const nextStepState =
                 await this.persistenceGateway.updateStepStateCurrentPage(
                     database.stepState,
-                    initialPage.id,
+                    finalPageId,
                 );
             if (nextStepState) {
                 database.stepState = nextStepState;
             }
-
-            targetPage = initialPage;
         }
-
-        await this.pageNavigator.renderPage(targetPage, buildContext());
     }
 
     /**
@@ -822,16 +837,36 @@ export class BotRuntime {
         chatId: TelegramBot.ChatId;
         page: IBotPage;
         errorMessage?: string;
+        session: IChatSessionState;
+        database: IContextDatabaseState;
         buildContext: ContextFactory;
     }): Promise<void> {
         const errorMessage =
             options.errorMessage ?? this.messages.validationFailed();
 
         await this.bot.sendMessage(options.chatId, errorMessage);
-        await this.pageNavigator.renderPage(
+        const renderedPageId = await this.pageNavigator.renderPage(
             options.page,
             options.buildContext({ message: undefined, metadata: undefined }),
         );
+
+        const finalPageId = renderedPageId ?? options.page.id;
+        if (options.session.pageId !== finalPageId) {
+            options.session.pageId = finalPageId;
+            await this.sessionManager.saveSession(
+                options.chatId,
+                options.session,
+            );
+
+            const nextStepState =
+                await this.persistenceGateway.updateStepStateCurrentPage(
+                    options.database.stepState,
+                    finalPageId,
+                );
+            if (nextStepState) {
+                options.database.stepState = nextStepState;
+            }
+        }
     }
 
     /**
@@ -878,22 +913,32 @@ export class BotRuntime {
             return;
         }
 
+        const previousPageId = options.session.pageId;
         options.session.pageId = nextPage.id;
-        await this.sessionManager.saveSession(options.chatId, options.session);
 
-        const nextStepState =
-            await this.persistenceGateway.updateStepStateCurrentPage(
-                options.database.stepState,
-                nextPage.id,
-            );
-        if (nextStepState) {
-            options.database.stepState = nextStepState;
-        }
-
-        await this.pageNavigator.renderPage(
+        const renderedPageId = await this.pageNavigator.renderPage(
             nextPage,
             options.buildContext({ message: undefined, metadata: undefined }),
         );
+
+        const finalPageId = renderedPageId ?? nextPage.id;
+        options.session.pageId = finalPageId;
+
+        if (previousPageId !== finalPageId) {
+            await this.sessionManager.saveSession(
+                options.chatId,
+                options.session,
+            );
+
+            const nextStepState =
+                await this.persistenceGateway.updateStepStateCurrentPage(
+                    options.database.stepState,
+                    finalPageId,
+                );
+            if (nextStepState) {
+                options.database.stepState = nextStepState;
+            }
+        }
     }
 
     /**
@@ -920,15 +965,30 @@ export class BotRuntime {
         }
 
         session.pageId = initialPage.id;
-        await this.sessionManager.saveSession(chatId, session);
 
-        const { buildContext } = await this.prepareContext({
+        const { database, buildContext } = await this.prepareContext({
             chatId,
             session,
             pageId: initialPage.id,
         });
 
-        await this.pageNavigator.renderPage(initialPage, buildContext());
+        const renderedPageId = await this.pageNavigator.renderPage(
+            initialPage,
+            buildContext(),
+        );
+        const finalPageId = renderedPageId ?? initialPage.id;
+        session.pageId = finalPageId;
+
+        await this.sessionManager.saveSession(chatId, session);
+
+        const nextStepState =
+            await this.persistenceGateway.updateStepStateCurrentPage(
+                database.stepState,
+                finalPageId,
+            );
+        if (nextStepState) {
+            database.stepState = nextStepState;
+        }
     }
 
     /**

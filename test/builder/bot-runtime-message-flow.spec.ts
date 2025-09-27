@@ -56,7 +56,7 @@ describe('BotRuntime message flow', () => {
             extractMessageValue: jest.fn(),
             validatePageValue: jest.fn(),
             resolveNextPageId: jest.fn(),
-            renderPage: jest.fn(),
+            renderPage: jest.fn(async (page: IBotPage) => page.id),
         } as unknown as jest.Mocked<PageNavigator>;
 
         const sessionManager = {
@@ -179,6 +179,52 @@ describe('BotRuntime message flow', () => {
         );
     });
 
+    it('persists redirected initial page when middleware redirects during start', async () => {
+        const {
+            runtime,
+            initialPage,
+            pageNavigator,
+            sessionManager,
+            persistenceGateway,
+            createStepState,
+        } = createRuntime();
+
+        const chatId = 778;
+        const session = { pageId: undefined, data: {} } as IChatSessionState;
+        const stepState = createStepState({ currentPage: null });
+
+        sessionManager.getSession.mockResolvedValue(session);
+        persistenceGateway.ensureDatabaseState.mockResolvedValue({
+            stepState,
+        });
+        pageNavigator.renderPage.mockResolvedValueOnce('redirected');
+
+        const message = createMessage({
+            chat: { id: chatId, type: 'private' },
+        });
+
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+        await (runtime as unknown as { handleMessage: Function }).handleMessage(
+            message,
+        );
+
+        expect(session.pageId).toBe('redirected');
+        expect(sessionManager.saveSession).toHaveBeenCalledWith(
+            chatId,
+            expect.objectContaining({
+                pageId: 'redirected',
+                data: {},
+            }),
+        );
+        expect(
+            persistenceGateway.updateStepStateCurrentPage,
+        ).toHaveBeenCalledWith(stepState, 'redirected');
+        expect(pageNavigator.renderPage).toHaveBeenCalledWith(
+            initialPage,
+            expect.objectContaining({ chatId }),
+        );
+    });
+
     it('hydrates session from persisted step state', async () => {
         const {
             runtime,
@@ -292,6 +338,79 @@ describe('BotRuntime message flow', () => {
         expect(persistenceGateway.persistStepProgress).not.toHaveBeenCalled();
         expect(pageNavigator.resolveNextPageId).not.toHaveBeenCalled();
         expect(session.pageId).toBe(initialPage.id);
+    });
+
+    it('persists redirected page id when advancing to the next page', async () => {
+        const {
+            runtime,
+            initialPage,
+            pageNavigator,
+            sessionManager,
+            persistenceGateway,
+            createStepState,
+        } = createRuntime();
+
+        const chatId = 444;
+        const nextPage: IBotPage = { id: 'next', content: 'Next' };
+        const redirectedPageId = 'redirected-next';
+        const session = {
+            pageId: initialPage.id,
+            data: {},
+        } as IChatSessionState;
+        const originalStepState = createStepState({
+            currentPage: initialPage.id,
+        });
+        const updatedStepState = createStepState({
+            currentPage: initialPage.id,
+            answers: {},
+        });
+
+        sessionManager.getSession.mockResolvedValue(session);
+        persistenceGateway.ensureDatabaseState.mockResolvedValue({
+            stepState: originalStepState,
+        });
+        pageNavigator.resolvePage.mockImplementation((pageId: string) => {
+            if (pageId === nextPage.id) {
+                return nextPage;
+            }
+            return initialPage;
+        });
+        pageNavigator.extractMessageValue.mockReturnValue('valid input');
+        pageNavigator.validatePageValue.mockResolvedValue({ valid: true });
+        persistenceGateway.persistStepProgress.mockResolvedValue(
+            updatedStepState,
+        );
+        persistenceGateway.syncSessionState.mockResolvedValue(undefined);
+        pageNavigator.resolveNextPageId.mockResolvedValue(nextPage.id);
+        pageNavigator.renderPage.mockResolvedValueOnce(redirectedPageId);
+
+        const message = createMessage({
+            chat: { id: chatId, type: 'private' },
+            text: 'valid input',
+        });
+
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+        await (runtime as unknown as { handleMessage: Function }).handleMessage(
+            message,
+        );
+
+        expect(session.pageId).toBe(redirectedPageId);
+        expect(sessionManager.saveSession).toHaveBeenCalledWith(
+            chatId,
+            expect.objectContaining({
+                pageId: redirectedPageId,
+                data: expect.objectContaining({
+                    [initialPage.id]: 'valid input',
+                }),
+            }),
+        );
+        expect(
+            persistenceGateway.updateStepStateCurrentPage,
+        ).toHaveBeenCalledWith(updatedStepState, redirectedPageId);
+        expect(pageNavigator.renderPage).toHaveBeenCalledWith(
+            nextPage,
+            expect.objectContaining({ chatId }),
+        );
     });
 
     it('clears progress and skips rendering when no next page is resolved', async () => {
