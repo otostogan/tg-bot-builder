@@ -1,7 +1,4 @@
-import {
-    normalizeBotOptions,
-    DEFAULT_BOT_RUNTIME_MESSAGES,
-} from '../../src';
+import { normalizeBotOptions, DEFAULT_BOT_RUNTIME_MESSAGES } from '../../src';
 import type {
     IBotBuilderOptions,
     IBotHandler,
@@ -9,8 +6,8 @@ import type {
     IBotMiddlewareConfig,
     IBotPage,
     IBotPageMiddlewareConfig,
-} from '../../src/app.interface';
-import type { BotRuntimeDependencies } from '../../src/builder/bot-runtime';
+} from '../../src';
+import type { BotRuntimeDependencies } from '../../src';
 
 describe('normalizeBotOptions', () => {
     it('resolves the identifier from an explicit id', () => {
@@ -69,9 +66,14 @@ describe('normalizeBotOptions', () => {
         const pages = [{ id: 'page-1' } as unknown as IBotPage];
         const handlers = [{ event: 'message' } as unknown as IBotHandler];
         const middlewares = [
-            { event: 'message', handler: jest.fn() } as unknown as IBotMiddlewareConfig,
+            {
+                event: 'message',
+                handler: jest.fn(),
+            } as unknown as IBotMiddlewareConfig,
         ];
-        const keyboards = [{ id: 'keyboard-1' } as unknown as IBotKeyboardConfig];
+        const keyboards = [
+            { id: 'keyboard-1' } as unknown as IBotKeyboardConfig,
+        ];
         const services = { foo: 'bar' };
         const pageMiddlewares = [
             {
@@ -97,12 +99,16 @@ describe('normalizeBotOptions', () => {
         const normalized = normalizeBotOptions(options);
 
         const newPage = { id: 'page-2' } as unknown as IBotPage;
-        const newHandler = { event: 'edited_message' } as unknown as IBotHandler;
+        const newHandler = {
+            event: 'edited_message',
+        } as unknown as IBotHandler;
         const newMiddleware = {
             event: 'edited_message',
             handler: jest.fn(),
         } as unknown as IBotMiddlewareConfig;
-        const newKeyboard = { id: 'keyboard-2' } as unknown as IBotKeyboardConfig;
+        const newKeyboard = {
+            id: 'keyboard-2',
+        } as unknown as IBotKeyboardConfig;
         const newPageMiddleware = {
             page: 'page-2',
             middlewares: [],
@@ -132,6 +138,8 @@ describe('normalizeBotOptions', () => {
         expect(options.pageMiddlewares).toHaveLength(1);
         expect(options.services).toEqual({ foo: 'bar' });
         expect(options.dependencies).toBe(dependencies);
-        expect(options.dependencies!.messageFactory).toBe(dependencies.messageFactory);
+        expect(options.dependencies!.messageFactory).toBe(
+            dependencies.messageFactory,
+        );
     });
 });

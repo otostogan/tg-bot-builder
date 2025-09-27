@@ -1,16 +1,15 @@
 import TelegramBot = require('node-telegram-bot-api');
-import {
-    SessionManager,
-    IChatSessionState,
-} from '../../src/builder/runtime/session-manager';
-import { IBotSessionState } from '../../src/app.interface';
+import { SessionManager, IChatSessionState } from '../../src';
+import { IBotSessionState } from '../../src';
 import { createInMemorySessionStorage } from '../mocks/session-storage';
 
 describe('SessionManager', () => {
     const chatId = 12345;
 
     it('normalizes missing session into an empty state and caches the result', async () => {
-        const storage = createInMemorySessionStorage<IChatSessionState | IBotSessionState>();
+        const storage = createInMemorySessionStorage<
+            IChatSessionState | IBotSessionState
+        >();
         const manager = new SessionManager({ sessionStorage: storage });
 
         const session = await manager.getSession(chatId);
@@ -26,7 +25,9 @@ describe('SessionManager', () => {
 
     it('wraps legacy session data and caches the normalized result', async () => {
         const legacyState: IBotSessionState = { foo: 'bar' };
-        const storage = createInMemorySessionStorage<IChatSessionState | IBotSessionState>({
+        const storage = createInMemorySessionStorage<
+            IChatSessionState | IBotSessionState
+        >({
             [chatId.toString()]: legacyState,
         });
         const manager = new SessionManager({ sessionStorage: storage });
@@ -54,7 +55,9 @@ describe('SessionManager', () => {
             data: undefined,
             user,
         } as unknown as IChatSessionState;
-        const storage = createInMemorySessionStorage<IChatSessionState | IBotSessionState>({
+        const storage = createInMemorySessionStorage<
+            IChatSessionState | IBotSessionState
+        >({
             [chatId.toString()]: stored,
         });
         const manager = new SessionManager({ sessionStorage: storage });
@@ -73,7 +76,9 @@ describe('SessionManager', () => {
     });
 
     it('updates cache and storage when saving a session', async () => {
-        const storage = createInMemorySessionStorage<IChatSessionState | IBotSessionState>();
+        const storage = createInMemorySessionStorage<
+            IChatSessionState | IBotSessionState
+        >();
         const manager = new SessionManager({ sessionStorage: storage });
 
         const session: IChatSessionState = {

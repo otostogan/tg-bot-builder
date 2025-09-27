@@ -1,12 +1,12 @@
 import TelegramBot = require('node-telegram-bot-api');
 import { Logger } from '@nestjs/common';
-import { PageNavigator } from '../../src/builder/runtime/page-navigator';
+import { PageNavigator } from '../../src';
 import {
     IBotBuilderContext,
     IBotKeyboardConfig,
     IBotPage,
     IBotPageMiddlewareConfig,
-} from '../../src/app.interface';
+} from '../../src';
 import { NodeTelegramBotApiMock } from '../mocks/node-telegram-bot-api';
 
 describe('PageNavigator', () => {
@@ -16,7 +16,7 @@ describe('PageNavigator', () => {
 
     const createContext = (): IBotBuilderContext => ({
         botId: 'test-bot',
-        bot: (bot as unknown) as TelegramBot,
+        bot: bot as unknown as TelegramBot,
         chatId,
         services: {},
     });
@@ -51,7 +51,7 @@ describe('PageNavigator', () => {
         };
 
         const navigator = new PageNavigator({
-            bot: (bot as unknown) as TelegramBot,
+            bot: bot as unknown as TelegramBot,
             logger,
             pageMiddlewares: [middleware],
         });
@@ -62,7 +62,10 @@ describe('PageNavigator', () => {
 
         expect(bot.sendMessage).toHaveBeenCalledTimes(1);
         expect(bot.sendMessage).toHaveBeenCalledWith(chatId, rejectionMessage);
-        expect(bot.sendMessage).not.toHaveBeenCalledWith(chatId, 'Protected content');
+        expect(bot.sendMessage).not.toHaveBeenCalledWith(
+            chatId,
+            'Protected content',
+        );
     });
 
     it('redirects to another page when middleware denies access with redirect', async () => {
@@ -81,11 +84,14 @@ describe('PageNavigator', () => {
 
         const destinationPage: IBotPage = {
             id: 'page-b',
-            content: { text: 'Destination page', options: { parse_mode: 'Markdown' } },
+            content: {
+                text: 'Destination page',
+                options: { parse_mode: 'Markdown' },
+            },
         };
 
         const navigator = new PageNavigator({
-            bot: (bot as unknown) as TelegramBot,
+            bot: bot as unknown as TelegramBot,
             logger,
             pageMiddlewares: [redirectMiddleware],
         });
@@ -95,14 +101,22 @@ describe('PageNavigator', () => {
         await navigator.renderPage(sourcePage, createContext());
 
         expect(bot.sendMessage).toHaveBeenCalledTimes(1);
-        expect(bot.sendMessage).toHaveBeenCalledWith(chatId, 'Destination page', {
-            parse_mode: 'Markdown',
-        });
+        expect(bot.sendMessage).toHaveBeenCalledWith(
+            chatId,
+            'Destination page',
+            {
+                parse_mode: 'Markdown',
+            },
+        );
     });
 
     it('uses page-specific keyboard instead of persistent keyboards when rendering', async () => {
-        const persistentMarkup = { keyboard: [[{ text: 'Persistent' }]] } as TelegramBot.ReplyKeyboardMarkup;
-        const pageMarkup = { inline_keyboard: [[{ text: 'Action', callback_data: 'do' }]] } as TelegramBot.InlineKeyboardMarkup;
+        const persistentMarkup = {
+            keyboard: [[{ text: 'Persistent' }]],
+        } as TelegramBot.ReplyKeyboardMarkup;
+        const pageMarkup = {
+            inline_keyboard: [[{ text: 'Action', callback_data: 'do' }]],
+        } as TelegramBot.InlineKeyboardMarkup;
 
         const persistentKeyboard: IBotKeyboardConfig = {
             id: 'persistent',
@@ -124,7 +138,7 @@ describe('PageNavigator', () => {
         };
 
         const navigator = new PageNavigator({
-            bot: (bot as unknown) as TelegramBot,
+            bot: bot as unknown as TelegramBot,
             logger,
             keyboards: [persistentKeyboard, pageKeyboard],
         });
