@@ -84,7 +84,8 @@ describe('BuilderService', () => {
             }),
         );
 
-        const [firstRuntime, secondRuntime] = runtimeModule.BotRuntime.instances;
+        const [firstRuntime, secondRuntime] =
+            runtimeModule.BotRuntime.instances;
 
         expect(firstRuntime.bot.stopPolling).toHaveBeenCalledTimes(1);
         expect(service.getBotRuntime('shared-id')).toBe(secondRuntime);
@@ -109,7 +110,8 @@ describe('BuilderService', () => {
             }),
         );
 
-        const [firstRuntime, secondRuntime] = runtimeModule.BotRuntime.instances;
+        const [firstRuntime, secondRuntime] =
+            runtimeModule.BotRuntime.instances;
 
         expect(firstRuntime.bot.stopPolling).toHaveBeenCalledTimes(1);
         expect(service.getBotRuntime('first-bot')).toBeUndefined();
@@ -166,11 +168,17 @@ describe('BuilderService', () => {
 
         const registeredBots = service.listRegisteredBots();
         registeredBots[0].pages.push('list-mutated' as never);
-        registeredBots[0].handlers[0] = { name: 'list-mutated-handler' } as never;
-        registeredBots[0].middlewares.push({ name: 'list-mutated-mw' } as never);
+        registeredBots[0].handlers[0] = {
+            name: 'list-mutated-handler',
+        } as never;
+        registeredBots[0].middlewares.push({
+            name: 'list-mutated-mw',
+        } as never);
         registeredBots[0].keyboards[0] = { id: 'list-mutated-kb' } as never;
         registeredBots[0].services.feature = 'list-mutated';
-        registeredBots[0].pageMiddlewares[0] = { name: 'list-mutated-pmw' } as never;
+        registeredBots[0].pageMiddlewares[0] = {
+            name: 'list-mutated-pmw',
+        } as never;
         registeredBots[0].dependencies!.pageNavigatorFactory = jest.fn();
 
         const afterListMutation = service.getBotOptions('copy-bot');
@@ -197,9 +205,11 @@ describe('BuilderService', () => {
             }),
         );
 
-        (service as unknown as {
-            clearTokenMapping(token?: string, botId?: string): void;
-        }).clearTokenMapping('token-a', 'other-bot');
+        (
+            service as unknown as {
+                clearTokenMapping(token?: string, botId?: string): void;
+            }
+        ).clearTokenMapping('token-a', 'other-bot');
 
         expect(service['tokenToBotId'].get('token-a')).toBe('token-bot');
     });
@@ -214,9 +224,11 @@ describe('BuilderService', () => {
             }),
         );
 
-        (service as unknown as {
-            clearTokenMapping(token?: string, botId?: string): void;
-        }).clearTokenMapping('token-a', 'token-bot');
+        (
+            service as unknown as {
+                clearTokenMapping(token?: string, botId?: string): void;
+            }
+        ).clearTokenMapping('token-a', 'token-bot');
 
         expect(service['tokenToBotId'].has('token-a')).toBe(false);
     });
