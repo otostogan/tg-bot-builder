@@ -23,6 +23,9 @@ const config: Config = {
     globals: {
         'ts-jest': {
             tsconfig: '<rootDir>/tsconfig.spec.json',
+            diagnostics: {
+                ignoreCodes: [2578],
+            },
         },
     },
 };
