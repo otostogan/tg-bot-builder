@@ -1,136 +1,174 @@
 # tg-bot-builder
 
-## Description
+## 1. About the library
 
-**tg-bot-builder** is a NestJS-oriented toolkit that wires [node-telegram-bot-api](https://github.com/yagop/node-telegram-bot-api) runtimes, conversational page flows, and optional Prisma persistence into a single module. The package exports a `BotBuilder` dynamic module along with helper services such as `BuilderService`, `BotRuntime`, and factories for session management and middleware so you can script Telegram conversations with predictable state handling and validation.
+### Purpose
+`tg-bot-builder` is a NestJS module that wraps `node-telegram-bot-api` with a declarative step-by-step builder for Telegram bots. It lets you describe a dialogue as a list of pages (steps) with validators, handlers, and middlewares while keeping user answers in sync with the session storage and a database.
 
-## Connection
+### Problems it solves
+* **Repeatable infrastructure.** The library eliminates the need to bootstrap the client, polling, session storage, and per-message context manually. All of that is orchestrated by a `BotRuntime` instance created by the `BuilderService`.
+* **Complex validations and transitions.** Instead of handling every incoming message yourself, you can describe steps with Yup schemas or custom validation functions. Navigation logic is encapsulated in `next` handlers.
+* **Built-in persistence.** The provided `PrismaPersistenceGateway` synchronizes users, step states, answer history, and `FormEntry` rows, so you do not have to write infrastructural code to save progress.
+* **Extensibility.** Every component (Prisma provider, session manager, message factory, persistence gateway) can be replaced without rewriting your flows. This is handy for localization, custom databases, or distributed storage.
 
-The builder is exposed as a NestJS dynamic module. Register it in your root module by returning one or more bot definitions from `BotBuilder.forRootAsync`. Each definition must provide a Telegram token and the conversational pages you want to serve.
+### Key principles
+1. **Pages as steps.** Scenarios are described with `IBotPage[]`. Each page manages its content, validation, and navigation.
+2. **Runtime wrapper around Telegram Bot API.** `BotRuntime` registers event handlers, builds context, and executes the middleware pipeline. It extracts user input, validates it, invokes `onValid`, determines the next page, and renders content through the `PageNavigator`.
+3. **State and persistence.** `SessionManager` keeps chat sessions in memory (or in a custom `IBotSessionStorage`), while an `IPersistenceGateway` syncs the state to a database. If Prisma is not connected, the runtime falls back to `NoopPersistenceGateway` and works fully in memory.
+4. **Overridable dependencies.** You can replace any runtime dependency through the `dependencies` field while preserving the contracts and default messages.
+
+## 2. Page lifecycle
+
+A page implements `IBotPage` and supports the fields `id`, `content`, `validate`, `onValid`, `next`, `middlewares`, and `yup`.
+
+```ts
+const pages: IBotPage[] = [
+  {
+    id: 'phone',
+    content: 'Send your phone number',
+    yup: yup.string().required(),
+    onValid: async (ctx) => ctx.bot.sendMessage(ctx.chatId, 'Thank you!'),
+    next: () => 'summary',
+  },
+];
+```
+
+### Processing order for an incoming message
+1. **Load the session.** `SessionManager.getSession` reads the chat state. The user from the message is merged into the session.
+2. **Prepare context.** `BotRuntime.prepareContext` calls `IPersistenceGateway.ensureDatabaseState` to ensure that a user and `StepState` exist in the database. The context contains `bot`, `chatId`, `session`, `db`, `services`, and the current `message`/`metadata`.
+3. **Resolve the current page.** If no page is assigned, the runtime calls `PageNavigator.resolveInitialPage` and renders the initial step.
+4. **Extract a value.** `PageNavigator.extractMessageValue` converts the message into a value (text, caption, contact, document, etc.).
+5. **Validate.** The runtime first applies the page's Yup schema. If provided, `page.validate` is executed next and returns `{ valid, message }`. On failure the runtime sends the `validationFailed` message and stays on the same page.
+6. **Persist answers.** After successful validation the value is stored in `session.data[page.id]`. `IPersistenceGateway.persistStepProgress` records the answer, history, and `FormEntry`, and `syncSessionState` updates the snapshot in the database.
+7. **Run `onValid`.** When defined, `page.onValid` receives the current context.
+8. **Determine the next page.** `PageNavigator.resolveNextPageId` attempts to call `page.next`. If it returns nothing, the runtime falls back to sequential order.
+9. **Advance.** `BotRuntime.advanceToNextPage` updates `session.pageId` and `StepState.currentPage`, calls `PageNavigator.renderPage` for the next step, and persists the session.
+10. **Execute page middlewares.** Before rendering, `PageNavigator.renderPage` runs `middlewares` (global middleware ids or inline definitions). A middleware can deny access, return a custom message, or redirect to another page.
+
+This lifecycle provides a predictable, testable conversation flow with full control over state transitions.
+
+## 3. Installation and setup
+
+1. Install the package and its peer dependency:
+   ```bash
+   npm install tg-bot-builder node-telegram-bot-api
+   ```
+
+2. Import the module in your `AppModule` and register a bot configuration:
 
 ```ts
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { BotBuilder, IBotBuilderOptions, IBotPage } from 'tg-bot-builder';
-import { string } from 'yup';
-
-const onboardingPages: IBotPage[] = [
-    {
-        id: 'start',
-        content: 'Welcome! Tap any key to begin.',
-        next: () => 'collect-name',
-    },
-    {
-        id: 'collect-name',
-        content: 'What is your name?',
-        yup: string().required('Name is required'),
-    },
-];
+import { BotBuilder, IBotBuilderOptions } from 'tg-bot-builder';
+import { PrismaService } from './prisma.service';
 
 @Module({
-    imports: [
-        ConfigModule.forRoot(),
-        BotBuilder.forRootAsync({
-            imports: [ConfigModule],
-            inject: [ConfigService],
-            useFactory: async (
-                config: ConfigService,
-            ): Promise<IBotBuilderOptions[]> => [
-                {
-                    id: 'onboarding-bot',
-                    TG_BOT_TOKEN: config.getOrThrow('TG_BOT_TOKEN'),
-                    pages: onboardingPages,
-                    initialPageId: 'start',
-                },
-            ],
-        }),
-    ],
+  imports: [
+    BotBuilder.forRootAsync({
+      imports: [],
+      inject: [PrismaService],
+      useFactory: async (prisma: PrismaService): Promise<IBotBuilderOptions[]> => [
+        {
+          TG_BOT_TOKEN: process.env.TG_TOKEN!,
+          slug: 'onboarding',
+          prisma,
+          initialPageId: 'welcome',
+          pages: [
+            {
+              id: 'welcome',
+              content: 'Hello! What is your name?',
+              yup: yup.string().required(),
+              next: () => 'done',
+            },
+            {
+              id: 'done',
+              content: (ctx) => `Thank you, ${ctx.session?.welcome}!`,
+            },
+          ],
+        },
+      ],
+    }),
+  ],
 })
 export class AppModule {}
 ```
 
-The module bootstraps `BuilderService`, which internally calls `registerBots` so that each runtime starts polling for updates immediately after Nest finishes booting.
+`BotBuilder` creates the `BotRuntime`, starts polling, attaches Prisma, and registers your pages automatically.
 
-## Connecting multiple bots
+## 4. Registering multiple bots
 
-You can register multiple bots at once by returning an array of options from `forRootAsync`, or augment the configuration later through `BotBuilder.forFeature`. Every option is normalized by `normalizeBotOptions`, which makes it safe to omit the `id` as long as a slug or token is present.
+You can register multiple bots by returning an array of configurations:
+
+```ts
+BotBuilder.forRootAsync({
+  useFactory: async (prisma: PrismaService) => [
+    {
+      TG_BOT_TOKEN: process.env.SUPPORT_TOKEN!,
+      slug: 'support',
+      prisma,
+      pages: [...],
+    },
+    {
+      TG_BOT_TOKEN: process.env.SALES_TOKEN!,
+      slug: 'sales',
+      prisma,
+      initialPageId: 'hello',
+      pages: [...],
+    },
+  ],
+  inject: [PrismaService],
+});
+```
+
+To extend scenarios from a feature module, use `BotBuilder.forFeature`:
 
 ```ts
 @Module({
-    imports: [
-        BotBuilder.forRootAsync({
-            useFactory: async () => [
-                { TG_BOT_TOKEN: process.env.SALES_TOKEN!, slug: 'sales' },
-                { TG_BOT_TOKEN: process.env.SUPPORT_TOKEN!, slug: 'support' },
-            ],
-        }),
-        BotBuilder.forFeature({
-            TG_BOT_TOKEN: process.env.INTERNAL_TOKEN!,
-            slug: 'internal-tools',
-            middlewares: [
-                {
-                    name: 'audit-log',
-                    priority: 10,
-                    handler: async (ctx, next) => {
-                        console.log('incoming update', ctx.event);
-                        await next();
-                    },
-                },
-            ],
-        }),
-    ],
+  imports: [
+    BotBuilder.forFeature({
+      TG_BOT_TOKEN: process.env.SURVEY_TOKEN!,
+      slug: 'survey',
+      pages: [...],
+    }),
+  ],
 })
-export class BotsModule {}
+export class SurveyModule {}
 ```
 
-`BuilderService` keeps the registered runtimes in a map, replacing any existing instance that uses the same id or token, so you can safely redeploy updates without restarting the Nest process manually.
+Each call to `registerBots` returns identifiers you can store in a registry.
 
-## Observing registered bots via `BotRegistryService`
+## 5. `BotRegistryService` example
 
-Whenever `BuilderService` registers a bot it stores the runtime, metadata, and the low-level `TelegramBot` instance in internal maps. The `BotRegistryService` exposes these details as an injectable, read-only API so that application modules can inspect active bots, render dashboards, or orchestrate bulk messaging without touching private state.
+`BotRegistryService` exposes metadata, runtime access, and the underlying Telegram client:
 
 ```ts
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Post, Body } from '@nestjs/common';
 import { BotRegistryService } from 'tg-bot-builder';
 
 @Controller('bots')
 export class BotsController {
-    constructor(private readonly registry: BotRegistryService) {}
+  constructor(private readonly registry: BotRegistryService) {}
 
-    @Get()
-    listBots() {
-        return this.registry.listBots();
+  @Get()
+  list() {
+    return this.registry.listBots();
+  }
+
+  @Post(':id/broadcast')
+  async broadcast(@Param('id') id: string, @Body('message') message: string) {
+    const bot = this.registry.getTelegramBot(id);
+    if (!bot) {
+      throw new Error('Bot not found');
     }
-
-    @Get(':id/send-test')
-    async triggerTest(@Param('id') id: string) {
-        const bot = this.registry.getTelegramBot(id);
-        if (!bot) {
-            return { ok: false, reason: 'Bot not found' };
-        }
-
-        await bot.sendMessage(process.env.ADMIN_CHAT_ID!, 'Test broadcast');
-        return { ok: true };
-    }
+    await bot.sendMessage(process.env.ADMIN_CHAT_ID!, message);
+  }
 }
 ```
 
-The service offers helpers to:
+Metadata includes a token preview, page count, and the presence of persistence or custom session storage—handy for admin panels.
 
-- Retrieve lightweight metadata for every bot with `listBots()`, including ids, slugs, token previews, and aggregate statistics.
-- Fetch a single bot’s metadata via `getBotMetadata(id)`.
-- Access the running `TelegramBot` client through `getTelegramBot(id)` for custom messaging workflows.
-- Obtain the owning `BotRuntime` using `getRuntime(id)` when you need access to session managers or persistence gateways.
+## 6. Prisma integration example
 
-All getters return clones of the stored data, keeping the underlying maps immutable. You can export the service from your module just like any Nest provider and inject it wherever runtime observability or orchestration is required.
-
-## Connection and operation via Prisma
-
-When a Prisma client is supplied, the runtime enables persistent chat history by way of the `PrismaPersistenceGateway`. Pass a configured `PrismaClient` and a `slug` so every bot stores its own answers and step history.
-
-### Prisma models expected by the built-in gateway
-
-Out of the box the gateway assumes the following Prisma schema. If you do not already have conflicting models, add these three entities to your `schema.prisma` so the runtime can store users, step state snapshots, and form submissions:
+Supply a Prisma service whose schema contains the following structure:
 
 ```prisma
 model User {
@@ -145,7 +183,6 @@ model User {
   updatedAt    DateTime    @updatedAt
   stepStates   StepState[]
   formEntries  FormEntry[]
-  Wallet       Wallet[]
 }
 
 model StepState {
@@ -179,415 +216,337 @@ model FormEntry {
 }
 ```
 
-If your project already defines its own models, consider the adapter approach described below to map existing entities into the shapes required by the builder.
-
 ```ts
-import { Module } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
-import {
-    BotBuilder,
-    IBotBuilderOptions,
-    IBotPage,
-    IBotBuilderContext,
-} from 'tg-bot-builder';
-import { string } from 'yup';
-
-const prisma = new PrismaClient();
-
-const surveyPages: IBotPage[] = [
-    {
-        id: 'email',
-        content: 'Enter your email address:',
-        yup: string().email('Email is invalid').required(),
-        onValid: async (ctx: IBotBuilderContext) => {
-            await ctx.bot.sendMessage(
-                ctx.chatId,
-                'Thanks! We stored your email.',
-            );
+@Module({
+  imports: [
+    BotBuilder.forRootAsync({
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => [
+        {
+          TG_BOT_TOKEN: process.env.TG_TOKEN!,
+          slug: 'default',
+          prisma,
+          pages: [...],
         },
-        next: () => 'finish',
-    },
-    {
-        id: 'finish',
-        content: (ctx) => `All done, ${ctx.session?.['email'] ?? 'friend'}!`,
-    },
-];
-
-@Module({
-    imports: [
-        BotBuilder.forRootAsync({
-            useFactory: async (): Promise<IBotBuilderOptions[]> => [
-                {
-                    TG_BOT_TOKEN: process.env.SURVEY_TOKEN!,
-                    prisma,
-                    slug: 'customer-survey',
-                    pages: surveyPages,
-                    initialPageId: 'email',
-                },
-            ],
-        }),
-    ],
-})
-export class SurveyModule {}
-```
-
-The Prisma gateway will automatically upsert the Telegram user, persist each page submission through `persistStepProgress`, and expose the hydrated database state on `ctx.db`. You can read or mutate `ctx.db.user` / `ctx.db.stepState` from within page callbacks, handlers, or middlewares to build multi-step funnels backed by your relational data.
-
-## Adapting to existing Prisma models
-
-Projects that already ship with their own Prisma models for users and step state can keep those schemas untouched by injecting a custom `IPersistenceGateway`. The builder exposes a `dependencies.persistenceGatewayFactory` hook that lets you supply an adapter which translates between your schema and the minimal `IPrismaUser` / `IPrismaStepState` interfaces used by the runtime.
-
-```ts
-import { Module } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
-import TelegramBot from 'node-telegram-bot-api';
-import {
-    BotBuilder,
-    IBotBuilderOptions,
-    IBotPage,
-    IBotSessionState,
-    IPersistenceGateway,
-    IPrismaStepState,
-    IPrismaUser,
-} from 'tg-bot-builder';
-
-const prisma = new PrismaClient();
-
-interface ExistingUser {
-    id: number;
-    telegramId: bigint;
-    chatId: string | null;
-    username: string | null;
-    firstName: string | null;
-    lastName: string | null;
-    languageCode: string | null;
-}
-
-interface ExistingStepState {
-    id: number;
-    userId: number;
-    chatId: string;
-    slug: string;
-    currentPage: string | null;
-    answers: unknown;
-    history: unknown;
-}
-
-type SessionSnapshot = {
-    pageId?: string;
-    data?: IBotSessionState;
-    user?: TelegramBot.User;
-};
-
-class ExistingModelsGateway implements IPersistenceGateway {
-    public readonly prisma?: PrismaClient;
-
-    constructor(private readonly db: PrismaClient, private readonly slug: string) {
-        this.prisma = db;
-    }
-
-    public async ensureDatabaseState(
-        chatId: TelegramBot.ChatId,
-        session: SessionSnapshot,
-        message?: TelegramBot.Message,
-        currentPageId?: string,
-    ): Promise<{
-        user?: IPrismaUser;
-        stepState?: IPrismaStepState;
-    }> {
-        const telegramUser = message?.from ?? session.user;
-        if (!telegramUser) {
-            return {};
-        }
-
-        const chatIdentifier = chatId.toString();
-        const telegramId = BigInt(telegramUser.id);
-
-        const user = await this.db.user.upsert({
-            where: { telegramId },
-            update: {
-                chatId: chatIdentifier,
-                username: telegramUser.username ?? undefined,
-                firstName: telegramUser.first_name ?? undefined,
-                lastName: telegramUser.last_name ?? undefined,
-                languageCode: telegramUser.language_code ?? undefined,
-            },
-            create: {
-                telegramId,
-                chatId: chatIdentifier,
-                username: telegramUser.username,
-                firstName: telegramUser.first_name,
-                lastName: telegramUser.last_name,
-                languageCode: telegramUser.language_code,
-            },
-        });
-
-        const targetPageId = currentPageId ?? session.pageId;
-
-        const stepState = await this.db.stepState.upsert({
-            where: { userId_slug: { userId: user.id, slug: this.slug } },
-            update: {
-                chatId: chatIdentifier,
-                ...(targetPageId !== undefined
-                    ? { currentPage: targetPageId }
-                    : {}),
-            },
-            create: {
-                userId: user.id,
-                chatId: chatIdentifier,
-                slug: this.slug,
-                currentPage: targetPageId ?? null,
-                answers: session.data ?? {},
-                history: [],
-            },
-        });
-
-        return {
-            user: this.mapUser(user as ExistingUser),
-            stepState: this.mapState(stepState as ExistingStepState),
-        };
-    }
-
-    public async persistStepProgress(
-        stepState: IPrismaStepState | undefined,
-        pageId: string,
-        value: unknown,
-    ): Promise<IPrismaStepState | undefined> {
-        if (!stepState) {
-            return stepState;
-        }
-
-        const previousHistory = Array.isArray(stepState.history)
-            ? stepState.history
-            : [];
-        const previousAnswers =
-            typeof stepState.answers === 'object' && stepState.answers !== null
-                ? (stepState.answers as Record<string, unknown>)
-                : {};
-
-        const updated = await this.db.stepState.update({
-            where: { id: stepState.id },
-            data: {
-                currentPage: pageId,
-                answers: {
-                    ...previousAnswers,
-                    [pageId]: value,
-                },
-                history: [
-                    ...previousHistory,
-                    { pageId, value, committedAt: new Date().toISOString() },
-                ],
-            },
-        });
-
-        await this.db.formEntry.upsert({
-            where: {
-                stepStateId_pageId: {
-                    stepStateId: updated.id,
-                    pageId,
-                },
-            },
-            update: { payload: value },
-            create: {
-                userId: updated.userId,
-                stepStateId: updated.id,
-                slug: updated.slug,
-                pageId,
-                payload: value,
-            },
-        });
-
-        return this.mapState(updated as ExistingStepState);
-    }
-
-    public async updateStepStateCurrentPage(
-        stepState: IPrismaStepState | undefined,
-        pageId: string | undefined,
-    ): Promise<IPrismaStepState | undefined> {
-        if (!stepState || pageId === undefined) {
-            return stepState;
-        }
-
-        const updated = await this.db.stepState.update({
-            where: { id: stepState.id },
-            data: { currentPage: pageId ?? null },
-        });
-
-        return this.mapState(updated as ExistingStepState);
-    }
-
-    public async syncSessionState(
-        stepState: IPrismaStepState | undefined,
-        sessionData: IBotSessionState,
-    ): Promise<IPrismaStepState | undefined> {
-        if (!stepState) {
-            return stepState;
-        }
-
-        const updated = await this.db.stepState.update({
-            where: { id: stepState.id },
-            data: { answers: sessionData },
-        });
-
-        return this.mapState(updated as ExistingStepState);
-    }
-
-    private mapUser(user: ExistingUser): IPrismaUser {
-        return {
-            id: user.id,
-            telegramId: user.telegramId,
-            chatId: user.chatId,
-            username: user.username,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            languageCode: user.languageCode,
-        };
-    }
-
-    private mapState(state: ExistingStepState): IPrismaStepState {
-        return {
-            id: state.id,
-            userId: state.userId,
-            chatId: state.chatId,
-            slug: state.slug,
-            currentPage: state.currentPage,
-            answers: state.answers,
-            history: state.history,
-        };
-    }
-}
-
-const onboardingPages: IBotPage[] = [];
-
-@Module({
-    imports: [
-        BotBuilder.forRootAsync({
-            useFactory: async (): Promise<IBotBuilderOptions[]> => [
-                {
-                    TG_BOT_TOKEN: process.env.TG_TOKEN!,
-                    slug: 'onboarding',
-                    pages: onboardingPages,
-                    dependencies: {
-                        persistenceGatewayFactory: ({ prisma: client, slug }) =>
-                            new ExistingModelsGateway(client ?? prisma, slug),
-                    },
-                },
-            ],
-        }),
-    ],
+      ],
+    }),
+  ],
 })
 export class AppModule {}
 ```
 
-The factory receives the Prisma client and bot slug so the adapter can orchestrate any custom lookup or persistence logic. Because the gateway returns objects shaped like `IPrismaUser` and `IPrismaStepState`, the rest of the runtime keeps working without being aware of your domain-specific entities.
+Model names can be different as long as the relationships follow the same shape.
 
-## Working without Prisma using a local store
+## 7. `persistenceGatewayFactory`
 
-If you do not need database persistence, provide a custom `IBotSessionStorage` implementation (or rely on the built-in in-memory fallback) to keep session data in any store you like. The session manager will normalize entries into the `IChatSessionState` shape.
+`BotRuntime` lets you replace the persistence layer through `dependencies.persistenceGatewayFactory`. Use it when you need custom model names, a different ORM, or additional business logic.
 
 ```ts
-import { Module } from '@nestjs/common';
-import { IBotSessionStorage, BotBuilder } from 'tg-bot-builder';
+import { BotRuntimeDependencies, PersistenceGatewayFactoryOptions } from 'tg-bot-builder';
+import { PrismaClient } from '@prisma/client';
+import TelegramBot from 'node-telegram-bot-api';
 
-const sessions = new Map<string, any>();
+class PrismaGateway implements IPersistenceGateway {
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly slug: string,
+  ) {}
 
-const memoryStorage: IBotSessionStorage = {
-    async get(chatId) {
-        return sessions.get(chatId.toString());
-    },
-    async set(chatId, state) {
-        sessions.set(chatId.toString(), state);
-    },
-    async delete(chatId) {
-        sessions.delete(chatId.toString());
-    },
+  async ensureDatabaseState(
+    chatId: TelegramBot.ChatId,
+    session: IChatSessionState,
+    message?: TelegramBot.Message,
+    currentPageId?: string,
+  ) {
+    /* implementation shown below */
+  }
+
+  // persistStepProgress, syncSessionState, updateStepStateCurrentPage ...
+}
+
+const dependencies: BotRuntimeDependencies = {
+  persistenceGatewayFactory: ({ prisma, slug }: PersistenceGatewayFactoryOptions) => {
+    if (!prisma) {
+      throw new Error('Prisma instance is required');
+    }
+    return new PrismaGateway(prisma, slug);
+  },
 };
 
-@Module({
-    imports: [
-        BotBuilder.forRootAsync({
-            useFactory: async () => [
-                {
-                    TG_BOT_TOKEN: process.env.MINIMAL_TOKEN!,
-                    sessionStorage: memoryStorage,
-                    pages: [
-                        {
-                            id: 'ping',
-                            content: 'Pong! We keep everything in memory.',
-                        },
-                    ],
-                    initialPageId: 'ping',
-                },
-            ],
-        }),
-    ],
-})
-export class LightweightModule {}
+const options: IBotBuilderOptions = {
+  TG_BOT_TOKEN: process.env.TG_TOKEN!,
+  slug: 'custom',
+  prisma: prismaService, // forward Prisma to the gateway
+  dependencies,
+  pages: [...],
+};
 ```
 
-Custom stores are useful for Redis, key-value services, or encrypted file persistence. Because the runtime caches sessions internally, your storage driver only needs to support simple `get`, `set`, and optional `delete` operations.
-
-## Different page configuration options
-
-Pages are described with the `IBotPage` interface and can combine validation, keyboards, and middleware to produce rich flows.
-
-- **Yup validation**: set the `yup` schema and the runtime will call `PageNavigator.validatePageValue` before advancing.
-- **Custom keyboards**: declare `IBotKeyboardConfig` entries and bind them via `pageMiddlewares` or `pageNavigator` helpers so that keyboards persist between steps.
-- **Middlewares**: attach `IBotMiddlewareConfig` instances globally or per handler to intercept Telegram events.
+Below is a complete `PrismaGateway` implementation you can copy and adapt. Model names such as `botUser`, `stepState`, and `formEntry` are placeholders—rename them to match your schema.
 
 ```ts
+import { Prisma, PrismaClient } from '@prisma/client';
+import TelegramBot from 'node-telegram-bot-api';
 import {
-    IBotPage,
-    IBotKeyboardConfig,
-    IBotMiddlewareConfig,
-    TBotKeyboardMarkup,
+  IBotSessionState,
+  IChatSessionState,
+  IContextDatabaseState,
+  IPersistenceGateway,
+  IPrismaStepState,
+  IPrismaUser,
+  normalizeAnswers,
+  normalizeChatId,
+  normalizeHistory,
+  normalizeTelegramId,
+  serializeValue,
 } from 'tg-bot-builder';
-import { object, string } from 'yup';
+import { isDeepStrictEqual } from 'util';
 
-const keyboards: IBotKeyboardConfig[] = [
-    {
-        id: 'start-keyboard',
-        persistent: true,
-        resolve: async (): Promise<TBotKeyboardMarkup> => ({
-            keyboard: [[{ text: 'Continue' }]],
-            resize_keyboard: true,
-        }),
-    },
-];
+export class PrismaGateway implements IPersistenceGateway {
+  prisma: PrismaClient;
+  constructor(
+    private readonly db: PrismaClient,
+    private readonly slug: string,
+  ) {
+    this.prisma = db;
+  }
 
-const pageMiddlewares = [
-    {
-        name: 'attach-keyboard',
-        priority: 5,
-        handler: async (ctx, page) => {
-            const keyboard = keyboards[0];
-            if (keyboard) {
-                await ctx.bot.sendMessage(ctx.chatId, 'Keyboard attached', {
-                    reply_markup: await keyboard.resolve(ctx),
-                });
-            }
-            return { allow: true };
+  public async ensureDatabaseState(
+    chatId: TelegramBot.ChatId,
+    session: IChatSessionState,
+    message?: TelegramBot.Message,
+    currentPageId?: string,
+  ): Promise<IContextDatabaseState> {
+    const telegramUser = message?.from ?? session.user;
+    if (!telegramUser) {
+      return {};
+    }
+
+    const telegramId = normalizeTelegramId(telegramUser.id);
+    const chatIdentifier = normalizeChatId(chatId);
+
+    const user = (await this.db.botUser.upsert({
+      where: { telegramId },
+      update: {
+        chatId: chatIdentifier,
+        username: telegramUser.username ?? undefined,
+        firstName: telegramUser.first_name ?? undefined,
+        lastName: telegramUser.last_name ?? undefined,
+        languageCode: telegramUser.language_code ?? undefined,
+      },
+      create: {
+        telegramId,
+        chatId: chatIdentifier,
+        username: telegramUser.username,
+        firstName: telegramUser.first_name,
+        lastName: telegramUser.last_name,
+        languageCode: telegramUser.language_code,
+      },
+    })) as unknown as IPrismaUser;
+
+    const targetPageId = currentPageId ?? session.pageId;
+
+    let stepState = (await this.db.stepState.findUnique({
+      where: {
+        userId_slug: {
+          userId: user.id,
+          slug: this.slug,
         },
-    },
-];
+      },
+    })) as unknown as IPrismaStepState | null;
 
-const formPages: IBotPage[] = [
-    {
-        id: 'profile',
-        content: 'Fill in your profile',
-        yup: object({
-            fullName: string().required(),
-            email: string().email().required(),
-        }),
-        middlewares: pageMiddlewares,
-    },
-];
+    if (!stepState) {
+      stepState = (await this.db.stepState.create({
+        data: {
+          userId: user.id,
+          chatId: chatIdentifier,
+          slug: this.slug,
+          currentPage: targetPageId ?? null,
+          answers: serializeValue(
+            session.data ?? {},
+            Prisma.JsonNull,
+          ),
+          history: serializeValue([], Prisma.JsonNull),
+        },
+      })) as unknown as IPrismaStepState;
+    } else {
+      const updates: Record<string, unknown> = {};
 
-const updateLogger: IBotMiddlewareConfig = {
-    name: 'update-logger',
-    handler: async (ctx, next) => {
-        console.log(`[${ctx.botId}]`, ctx.event);
-        await next();
-    },
+      if (stepState.chatId !== chatIdentifier) {
+        updates.chatId = chatIdentifier;
+      }
+
+      if (
+        targetPageId !== undefined &&
+        stepState.currentPage !== targetPageId
+      ) {
+        updates.currentPage = targetPageId;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        stepState = (await this.db.stepState.update({
+          where: { id: stepState.id },
+          data: updates,
+        })) as unknown as IPrismaStepState;
+      }
+    }
+
+    return {
+      user,
+      stepState,
+    };
+  }
+
+  public async persistStepProgress(
+    stepState: IPrismaStepState | undefined,
+    pageId: string,
+    value: unknown,
+  ): Promise<IPrismaStepState | undefined> {
+    if (!stepState) {
+      return stepState;
+    }
+
+    const serializedValue = serializeValue(value, Prisma.JsonNull);
+    const answers = normalizeAnswers(stepState.answers, Prisma.JsonNull);
+    answers[pageId] = serializedValue;
+
+    const history = normalizeHistory(stepState.history, Prisma.JsonNull);
+    history.push({
+      pageId,
+      value: serializedValue,
+      timestamp: new Date().toISOString(),
+    });
+
+    const updatedStepState = (await this.db.stepState.update({
+      where: { id: stepState.id },
+      data: {
+        answers: serializeValue(answers, Prisma.JsonNull),
+        history: serializeValue(history, Prisma.JsonNull),
+      },
+    })) as unknown as IPrismaStepState;
+
+    await this.db.formEntry.upsert({
+      where: {
+        stepStateId_pageId: {
+          stepStateId: updatedStepState.id,
+          pageId,
+        },
+      },
+      update: {
+        payload: serializedValue,
+      },
+      create: {
+        userId: updatedStepState.userId,
+        stepStateId: updatedStepState.id,
+        slug: updatedStepState.slug,
+        pageId,
+        payload: serializedValue,
+      },
+    });
+
+    return updatedStepState;
+  }
+
+  public async syncSessionState(
+    stepState: IPrismaStepState | undefined,
+    sessionData: IBotSessionState,
+  ): Promise<IPrismaStepState | undefined> {
+    if (!stepState) {
+      return stepState;
+    }
+
+    const serializedSession = serializeValue(
+      sessionData ?? {},
+      Prisma.JsonNull,
+    );
+    const normalizedSession = normalizeAnswers(
+      serializedSession ?? {},
+      null,
+    );
+    const normalizedExisting = normalizeAnswers(
+      stepState.answers,
+      Prisma.JsonNull,
+    );
+
+    if (isDeepStrictEqual(normalizedExisting, normalizedSession)) {
+      return stepState;
+    }
+
+    return (await this.db.stepState.update({
+      where: { id: stepState.id },
+      data: {
+        answers: serializedSession ?? {},
+      },
+    })) as unknown as IPrismaStepState;
+  }
+
+  public async updateStepStateCurrentPage(
+    stepState: IPrismaStepState | undefined,
+    pageId: string | undefined,
+  ): Promise<IPrismaStepState | undefined> {
+    if (!stepState) {
+      return stepState;
+    }
+
+    const targetPage = pageId ?? null;
+    if (stepState.currentPage === targetPage) {
+      return stepState;
+    }
+
+    return (await this.db.stepState.update({
+      where: { id: stepState.id },
+      data: {
+        currentPage: targetPage,
+      },
+    })) as unknown as IPrismaStepState;
+  }
+}
+```
+
+## 8. Working without Prisma
+
+When a bot configuration omits the `prisma` option, `createPersistenceGateway` returns a `NoopPersistenceGateway`. In this mode:
+
+* No database is touched; state lives entirely in memory via the `SessionManager` map-based storage.
+* `persistStepProgress`, `syncSessionState`, and `updateStepStateCurrentPage` are no-ops that return the existing state.
+* You can still plug in an external session store (e.g., Redis) by passing a custom `sessionStorage` implementation.
+
+This setup is useful for prototypes, tests, or when you manage persistence outside of Prisma.
+
+## 9. `createBotRuntimeMessages`
+
+Runtime messages (logs and user prompts) can be localized with `createBotRuntimeMessages` or by providing `dependencies.messageFactory`.
+
+```ts
+import { createBotRuntimeMessages } from 'tg-bot-builder';
+
+const messages = createBotRuntimeMessages({
+  runtimeInitialized: ({ id }) => `Bot ${id} is running`,
+  validationFailed: () => 'Please check your input.',
+});
+
+const options: IBotBuilderOptions = {
+  TG_BOT_TOKEN: process.env.TG_TOKEN!,
+  slug: 'localized',
+  messages,
+  pages: [...],
 };
 ```
+
+To override the factory itself, use dependencies:
+
+```ts
+const dependencies: BotRuntimeDependencies = {
+  messageFactory: (overrides) =>
+    createBotRuntimeMessages({
+      ...overrides,
+      middlewareError: ({ event }) => `Middleware error for event ${event}`,
+    }),
+};
+```
+
+This approach enables centralized multilingual support or integration with an existing localization service.
+
+---
+
+Following these steps you can build predictable, extensible, and reliable Telegram bot flows on top of NestJS.
