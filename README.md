@@ -547,6 +547,20 @@ const dependencies: BotRuntimeDependencies = {
 
 This approach enables centralized multilingual support or integration with an existing localization service.
 
+## 10. Testing and coverage
+
+Jest is configured with `ts-jest` so that TypeScript sources and NestJS testing utilities work out of the box. The test harness
+loads `reflect-metadata`, mocks timer utilities from `@nestjs/testing`, and clears mocks between runs. To execute tests or collect
+coverage locally and in CI/CD, use the following commands:
+
+```bash
+npm test           # single test run
+npm run test:watch # watch mode for local development
+npm run test:cov   # run the suite with coverage reporting
+```
+
+Coverage artifacts are emitted to the `coverage` directory, making it easy to upload reports from CI pipelines.
+
 ---
 
 Following these steps you can build predictable, extensible, and reliable Telegram bot flows on top of NestJS.

@@ -19,7 +19,10 @@
     "scripts": {
         "build": "tsc",
         "distribute": "npm run build && npm publish",
-        "p": "npx prettier . --write"
+        "p": "npx prettier . --write",
+        "test": "jest",
+        "test:watch": "npm run test -- --watch",
+        "test:cov": "npm run test -- --coverage"
     },
     "repository": {
         "type": "git",
