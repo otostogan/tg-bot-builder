@@ -298,7 +298,10 @@ describe('PrismaPersistenceGateway', () => {
             };
             const sessionData: IBotSessionState = { foo: 'bar' };
 
-            const result = await gateway.syncSessionState(stepState, sessionData);
+            const result = await gateway.syncSessionState(
+                stepState,
+                sessionData,
+            );
 
             expect(result).toBe(stepState);
             expect(prisma.stepState.update).not.toHaveBeenCalled();
@@ -323,7 +326,10 @@ describe('PrismaPersistenceGateway', () => {
 
             prisma.stepState.update.mockResolvedValue(updated);
 
-            const result = await gateway.syncSessionState(stepState, sessionData);
+            const result = await gateway.syncSessionState(
+                stepState,
+                sessionData,
+            );
 
             expect(prisma.stepState.update).toHaveBeenCalledWith({
                 where: { id: stepState.id },
