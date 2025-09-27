@@ -20,13 +20,16 @@ const config: Config = {
             prefix: '<rootDir>/',
         }),
     },
-    globals: {
-        'ts-jest': {
-            tsconfig: '<rootDir>/tsconfig.spec.json',
-            diagnostics: {
-                ignoreCodes: [2578],
+    transform: {
+        '^.+\\.(t|j)s$': [
+            'ts-jest',
+            {
+                tsconfig: '<rootDir>/tsconfig.spec.json',
+                diagnostics: {
+                    ignoreCodes: [2578],
+                },
             },
-        },
+        ],
     },
 };
 
