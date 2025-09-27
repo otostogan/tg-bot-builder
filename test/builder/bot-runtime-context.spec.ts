@@ -87,7 +87,8 @@ describe('BotRuntime middleware context', () => {
         } as IBotRuntimeOptions;
 
         const dependencies = {
-            pageNavigatorFactory: () => pageNavigator as unknown as PageNavigator,
+            pageNavigatorFactory: () =>
+                pageNavigator as unknown as PageNavigator,
             sessionManagerFactory: () =>
                 sessionManager as unknown as SessionManager,
             persistenceGatewayFactory: () =>
@@ -273,7 +274,9 @@ describe('BotRuntime middleware context', () => {
         const database: IContextDatabaseState = {};
         const chatId = 42 as TelegramBot.ChatId;
         const originalMessage = createMessage();
-        const originalMetadata = { type: 'original' } as unknown as TelegramBot.Metadata;
+        const originalMetadata = {
+            type: 'original',
+        } as unknown as TelegramBot.Metadata;
         const originalUser = originalMessage.from;
 
         persistenceGateway.ensureDatabaseState.mockResolvedValue(database);
@@ -310,7 +313,9 @@ describe('BotRuntime middleware context', () => {
         });
 
         const overrideMessage = createMessage({ message_id: 999 });
-        const overrideMetadata = { type: 'override' } as unknown as TelegramBot.Metadata;
+        const overrideMetadata = {
+            type: 'override',
+        } as unknown as TelegramBot.Metadata;
         const overrideUser = {
             id: 777,
             is_bot: false,
