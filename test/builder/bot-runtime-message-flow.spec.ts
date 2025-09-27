@@ -179,6 +179,73 @@ describe('BotRuntime message flow', () => {
         );
     });
 
+    it('hydrates session from persisted step state', async () => {
+        const {
+            runtime,
+            initialPage,
+            pageNavigator,
+            sessionManager,
+            persistenceGateway,
+            createStepState,
+        } = createRuntime();
+
+        const chatId = 333;
+        const session = { pageId: undefined, data: {} } as IChatSessionState;
+        const persistedPage: IBotPage = {
+            id: 'persisted-page',
+            content: 'Persisted page',
+        };
+        const stepState = createStepState({
+            currentPage: 'persisted-page',
+            answers: { 'persisted-page': 'stored value' },
+        });
+
+        sessionManager.getSession.mockResolvedValue(session);
+        persistenceGateway.ensureDatabaseState.mockResolvedValue({
+            stepState,
+        });
+        pageNavigator.resolvePage.mockImplementation((pageId: string) => {
+            if (pageId === persistedPage.id) {
+                return persistedPage;
+            }
+            return initialPage;
+        });
+        pageNavigator.extractMessageValue.mockReturnValue('user input');
+        pageNavigator.validatePageValue.mockResolvedValue({
+            valid: false,
+            errorMessage: '...',
+        });
+
+        const message = createMessage({
+            chat: { id: chatId, type: 'private' },
+            text: 'user input',
+        });
+
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+        await (runtime as unknown as { handleMessage: Function }).handleMessage(
+            message,
+        );
+
+        expect(sessionManager.saveSession).toHaveBeenCalledWith(
+            chatId,
+            expect.objectContaining({
+                pageId: persistedPage.id,
+                data: expect.objectContaining({
+                    [persistedPage.id]: 'stored value',
+                }),
+            }),
+        );
+        expect(pageNavigator.resolvePage).toHaveBeenCalledWith('persisted-page');
+        expect(
+            persistenceGateway.updateStepStateCurrentPage,
+        ).not.toHaveBeenCalled();
+        expect(runtime.bot.sendMessage).toHaveBeenCalledWith(chatId, '...');
+        expect(pageNavigator.renderPage).toHaveBeenCalledWith(
+            persistedPage,
+            expect.objectContaining({ chatId }),
+        );
+    });
+
     it('re-renders the same page with an error message when validation fails', async () => {
         const {
             runtime,
