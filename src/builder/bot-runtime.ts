@@ -913,6 +913,11 @@ export class BotRuntime {
         }
 
         const previousPageId = options.session.pageId;
+
+        if (previousPageId === options.nextPageId) {
+            return;
+        }
+
         options.session.pageId = nextPage.id;
 
         const renderedPageId = await this.pageNavigator.renderPage(

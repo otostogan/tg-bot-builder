@@ -413,6 +413,51 @@ describe('BotRuntime message flow', () => {
         );
     });
 
+    it('does not re-render the page when the next page matches the current page', async () => {
+        const {
+            runtime,
+            initialPage,
+            pageNavigator,
+            sessionManager,
+            persistenceGateway,
+            createStepState,
+        } = createRuntime();
+
+        const chatId = 555;
+        const session = {
+            pageId: initialPage.id,
+            data: {},
+        } as IChatSessionState;
+        const stepState = createStepState({ currentPage: initialPage.id });
+
+        sessionManager.getSession.mockResolvedValue(session);
+        persistenceGateway.ensureDatabaseState.mockResolvedValue({
+            stepState,
+        });
+        pageNavigator.resolvePage.mockReturnValue(initialPage);
+        pageNavigator.extractMessageValue.mockReturnValue('input');
+        pageNavigator.validatePageValue.mockResolvedValue({ valid: true });
+        persistenceGateway.persistStepProgress.mockResolvedValue(undefined);
+        persistenceGateway.syncSessionState.mockResolvedValue(undefined);
+        pageNavigator.resolveNextPageId.mockResolvedValue(initialPage.id);
+
+        const message = createMessage({
+            chat: { id: chatId, type: 'private' },
+            text: 'input',
+        });
+
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+        await (runtime as unknown as { handleMessage: Function }).handleMessage(
+            message,
+        );
+
+        expect(pageNavigator.renderPage).not.toHaveBeenCalled();
+        expect(sessionManager.saveSession).not.toHaveBeenCalled();
+        expect(
+            persistenceGateway.updateStepStateCurrentPage,
+        ).not.toHaveBeenCalled();
+    });
+
     it('clears progress and skips rendering when no next page is resolved', async () => {
         const {
             runtime,
