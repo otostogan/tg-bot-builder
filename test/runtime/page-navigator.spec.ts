@@ -160,4 +160,21 @@ describe('PageNavigator', () => {
             }),
         );
     });
+
+    it('skips sending a message when a page has no content', async () => {
+        const page: IBotPage = {
+            id: 'silent-page',
+        };
+
+        const navigator = new PageNavigator({
+            bot: bot as unknown as TelegramBot,
+            logger,
+        });
+
+        navigator.registerPages([page]);
+
+        await navigator.renderPage(page, createContext());
+
+        expect(bot.sendMessage).not.toHaveBeenCalled();
+    });
 });
