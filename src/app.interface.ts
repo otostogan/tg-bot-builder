@@ -91,7 +91,7 @@ export type TBotPageValidateFn = (
 
 export interface IBotPage {
     id: TBotPageIdentifier;
-    content: TBotPageContent;
+    content?: TBotPageContent;
     onValid?: TBotPageOnValid;
     next?: TBotPageNextResolver;
     validate?: TBotPageValidateFn;

@@ -328,6 +328,10 @@ export class PageNavigator {
             return page.id;
         }
 
+        if (page.content === undefined) {
+            return page.id;
+        }
+
         const payload = await this.resolvePageContent(page.content, context);
         const keyboard = await this.resolveKeyboard(page.id, context);
 
