@@ -82,6 +82,8 @@ export type TBotPageNextResolver = (
 export interface IBotPageValidateResult {
     valid: boolean;
     message?: string;
+    redirectTo?: TBotPageIdentifier;
+    saveValue?: boolean;
 }
 
 export type TBotPageValidateFn = (
