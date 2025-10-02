@@ -28,6 +28,8 @@ export interface PageNavigatorOptions {
 export interface IValidationResult {
     valid: boolean;
     errorMessage?: string;
+    redirectTo?: TBotPageIdentifier;
+    saveValue?: boolean;
 }
 export interface PageNavigatorFactoryOptions extends PageNavigatorOptions {}
 
@@ -221,8 +223,16 @@ export class PageNavigator {
                         errorMessage:
                             normalizedResult.message ??
                             'Incorrect data entered, please try again.',
+                        redirectTo: normalizedResult.redirectTo,
+                        saveValue: normalizedResult.saveValue,
                     };
                 }
+
+                return {
+                    valid: true,
+                    redirectTo: normalizedResult.redirectTo,
+                    saveValue: normalizedResult.saveValue,
+                };
             } catch (error) {
                 const message =
                     error instanceof Error
@@ -251,6 +261,17 @@ export class PageNavigator {
             result.message.trim().length > 0
         ) {
             normalized.message = result.message.trim();
+        }
+
+        if (
+            typeof result.redirectTo === 'string' &&
+            result.redirectTo.trim().length > 0
+        ) {
+            normalized.redirectTo = result.redirectTo.trim();
+        }
+
+        if (typeof result.saveValue === 'boolean') {
+            normalized.saveValue = result.saveValue;
         }
 
         return normalized;

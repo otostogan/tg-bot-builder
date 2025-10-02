@@ -321,6 +321,40 @@ export class BotRuntime {
                 context,
             );
 
+            if (validationResult.redirectTo) {
+                if (validationResult.saveValue) {
+                    session.data[currentPage.id] = value;
+
+                    const updatedStepState =
+                        await this.persistenceGateway.persistStepProgress(
+                            database.stepState,
+                            currentPage.id,
+                            value,
+                        );
+                    if (updatedStepState) {
+                        database.stepState = updatedStepState;
+                    }
+
+                    const synchronizedStepState =
+                        await this.persistenceGateway.syncSessionState(
+                            database.stepState,
+                            session.data,
+                        );
+                    if (synchronizedStepState) {
+                        database.stepState = synchronizedStepState;
+                    }
+                }
+
+                await this.advanceToNextPage({
+                    chatId,
+                    session,
+                    nextPageId: validationResult.redirectTo,
+                    database,
+                    buildContext,
+                });
+                return;
+            }
+
             if (!validationResult.valid) {
                 await this.processValidationFailure({
                     chatId,

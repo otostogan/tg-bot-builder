@@ -340,6 +340,75 @@ describe('BotRuntime message flow', () => {
         expect(session.pageId).toBe(initialPage.id);
     });
 
+    it('redirects to the requested page when validation result includes redirectTo', async () => {
+        const {
+            runtime,
+            initialPage,
+            pageNavigator,
+            sessionManager,
+            persistenceGateway,
+        } = createRuntime();
+
+        const redirectPage: IBotPage = { id: 'redirect', content: 'Redirect' };
+        initialPage.onValid = jest.fn();
+
+        const chatId = 112;
+        const session = {
+            pageId: initialPage.id,
+            data: {},
+        } as IChatSessionState;
+
+        sessionManager.getSession.mockResolvedValue(session);
+        persistenceGateway.ensureDatabaseState.mockResolvedValue({});
+
+        pageNavigator.resolvePage.mockImplementation((pageId: string) => {
+            if (pageId === initialPage.id) {
+                return initialPage;
+            }
+            if (pageId === redirectPage.id) {
+                return redirectPage;
+            }
+            return undefined;
+        });
+        pageNavigator.extractMessageValue.mockReturnValue('input');
+        pageNavigator.validatePageValue.mockResolvedValue({
+            valid: false,
+            redirectTo: redirectPage.id,
+        });
+
+        const validationFailureSpy = jest.spyOn(
+            runtime as unknown as { processValidationFailure: jest.Mock },
+            'processValidationFailure',
+        );
+
+        const message = createMessage({
+            chat: { id: chatId, type: 'private' },
+            text: 'input',
+        });
+
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+        await (runtime as unknown as { handleMessage: Function }).handleMessage(
+            message,
+        );
+
+        expect(validationFailureSpy).not.toHaveBeenCalled();
+        expect(initialPage.onValid).not.toHaveBeenCalled();
+        expect(runtime.bot.sendMessage).not.toHaveBeenCalled();
+        expect(session.data).toEqual({});
+        expect(persistenceGateway.persistStepProgress).not.toHaveBeenCalled();
+        expect(persistenceGateway.syncSessionState).not.toHaveBeenCalled();
+        expect(pageNavigator.resolveNextPageId).not.toHaveBeenCalled();
+        expect(pageNavigator.renderPage).toHaveBeenCalledWith(
+            redirectPage,
+            expect.objectContaining({ chatId }),
+        );
+        expect(sessionManager.saveSession).toHaveBeenCalledWith(
+            chatId,
+            expect.objectContaining({ pageId: redirectPage.id }),
+        );
+        expect(session.pageId).toBe(redirectPage.id);
+    });
+
     it('persists redirected page id when advancing to the next page', async () => {
         const {
             runtime,
