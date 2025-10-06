@@ -12,6 +12,8 @@ import {
     TBotPageMiddlewareHandlerResult,
     TBotPageContent,
     TBotPageContentResult,
+    IBotSentMessage,
+    IBotSentMessagePayload,
 } from '../../app.interface';
 import { Logger } from '@nestjs/common';
 
@@ -24,6 +26,7 @@ export interface PageNavigatorOptions {
     initialPageId?: TBotPageIdentifier;
     keyboards?: IBotKeyboardConfig[];
     pageMiddlewares?: IBotPageMiddlewareConfig[];
+    onMessageSent?: (sent: IBotSentMessage) => void | Promise<void>;
 }
 export interface IValidationResult {
     valid: boolean;
@@ -345,7 +348,15 @@ export class PageNavigator {
                 `Page middlewares prevented rendering of "${page.id}" for chat ${context.chatId}`,
             );
 
-            await this.options.bot.sendMessage(context.chatId, message);
+            const sentMessage = await this.options.bot.sendMessage(
+                context.chatId,
+                message,
+            );
+            await this.notifyMessageSent(
+                context,
+                { text: message },
+                sentMessage,
+            );
             return page.id;
         }
 
@@ -364,9 +375,17 @@ export class PageNavigator {
             options.reply_markup = keyboard;
         }
 
-        await this.options.bot.sendMessage(context.chatId, payload.text, {
-            ...options,
-        });
+        const sendOptions = { ...options };
+        const sentMessage = await this.options.bot.sendMessage(
+            context.chatId,
+            payload.text,
+            sendOptions,
+        );
+        await this.notifyMessageSent(
+            context,
+            { text: payload.text, options: sendOptions },
+            sentMessage,
+        );
 
         return page.id;
     }
@@ -400,6 +419,22 @@ export class PageNavigator {
         }
 
         return { allow: true };
+    }
+
+    private async notifyMessageSent(
+        context: IBotBuilderContext,
+        payload: IBotSentMessagePayload,
+        message: TelegramBot.Message,
+    ): Promise<void> {
+        if (!this.options.onMessageSent) {
+            return;
+        }
+
+        await this.options.onMessageSent({
+            context,
+            payload,
+            message,
+        });
     }
 
     /**

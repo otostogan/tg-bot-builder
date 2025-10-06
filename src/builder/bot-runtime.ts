@@ -10,6 +10,8 @@ import {
     IBotRuntimeMessages,
     IPrismaStepState,
     TBotPageIdentifier,
+    TBotSentMessageObserver,
+    IBotSentMessage,
 } from '../app.interface';
 import TelegramBot = require('node-telegram-bot-api');
 import {
@@ -93,6 +95,7 @@ export function normalizeBotOptions(
     const keyboards = [...(options.keyboards ?? [])];
     const services = { ...(options.services ?? {}) };
     const pageMiddlewares = [...(options.pageMiddlewares ?? [])];
+    const messageObservers = [...(options.messageObservers ?? [])];
     const slug = options.slug ?? 'default';
 
     const fallbackId =
@@ -121,6 +124,7 @@ export function normalizeBotOptions(
         keyboards,
         services,
         pageMiddlewares,
+        messageObservers,
         slug,
         dependencies,
     } as IBotRuntimeOptions;
@@ -138,6 +142,7 @@ export class BotRuntime {
     private readonly helperServices: Record<string, unknown>;
     private readonly globalMiddlewares: IBotMiddlewareConfig[];
     private readonly messages: IBotRuntimeMessages;
+    private readonly messageObservers: TBotSentMessageObserver[];
 
     /**
      * Boots the Telegram runtime by wiring helpers, persistence, middleware,
@@ -167,6 +172,7 @@ export class BotRuntime {
         this.globalMiddlewares = sortMiddlewareConfigs(
             options.middlewares ?? [],
         );
+        this.messageObservers = options.messageObservers ?? [];
 
         const providedSessionStorage = options.sessionStorage as
             | IBotSessionStorage<IChatSessionState | IBotSessionState>
@@ -199,6 +205,9 @@ export class BotRuntime {
             initialPageId: options.initialPageId,
             keyboards: options.keyboards ?? [],
             pageMiddlewares: options.pageMiddlewares ?? [],
+            onMessageSent: async (sent) => {
+                await this.notifyMessageObservers(sent);
+            },
         });
 
         this.pageNavigator.registerPages(options.pages ?? []);
@@ -862,6 +871,64 @@ export class BotRuntime {
         return trimmed.length > 0 ? trimmed : undefined;
     }
 
+    private async notifyMessageObservers(
+        sent: IBotSentMessage,
+    ): Promise<void> {
+        if (this.messageObservers.length === 0) {
+            return;
+        }
+
+        for (const observer of this.messageObservers) {
+            try {
+                await observer(sent);
+            } catch (error) {
+                const warning =
+                    error instanceof Error
+                        ? `Message observer threw an error for bot "${this.id}": ${error.message}`
+                        : `Message observer threw an error for bot "${this.id}"`;
+                this.logger.warn(warning);
+            }
+        }
+    }
+
+    private createContextBotProxy(
+        context: IBotBuilderContext,
+    ): TelegramBot {
+        const target = this.bot;
+        const runtime = this;
+
+        const proxy = new Proxy(target, {
+            get(value, property, receiver) {
+                const original = Reflect.get(value, property, receiver);
+
+                if (property === 'sendMessage' && typeof original === 'function') {
+                    return async (
+                        ...args: Parameters<TelegramBot['sendMessage']>
+                    ) => {
+                        const textArg = args[1] as string;
+                        const optionsArg =
+                            args[2] as TelegramBot.SendMessageOptions | undefined;
+                        const sentMessage = await original.apply(value, args);
+                        await runtime.notifyMessageObservers({
+                            context,
+                            payload: { text: textArg, options: optionsArg },
+                            message: sentMessage,
+                        });
+                        return sentMessage;
+                    };
+                }
+
+                if (typeof original === 'function') {
+                    return original.bind(value);
+                }
+
+                return original;
+            },
+        });
+
+        return proxy as TelegramBot;
+    }
+
     /**
      * Notifies the user about validation errors and re-renders the current
      * page to allow correcting input.
@@ -877,10 +944,22 @@ export class BotRuntime {
         const errorMessage =
             options.errorMessage ?? this.messages.validationFailed();
 
-        await this.bot.sendMessage(options.chatId, errorMessage);
+        const context = options.buildContext({
+            message: undefined,
+            metadata: undefined,
+        });
+        const sentMessage = await this.bot.sendMessage(
+            options.chatId,
+            errorMessage,
+        );
+        await this.notifyMessageObservers({
+            context,
+            payload: { text: errorMessage },
+            message: sentMessage,
+        });
         const renderedPageId = await this.pageNavigator.renderPage(
             options.page,
-            options.buildContext({ message: undefined, metadata: undefined }),
+            context,
         );
 
         const finalPageId = renderedPageId ?? options.page.id;
@@ -1037,7 +1116,7 @@ export class BotRuntime {
         const user =
             options.user ?? options.message?.from ?? options.session.user;
 
-        return {
+        const context: IBotBuilderContext = {
             botId: this.id,
             bot: this.bot,
             chatId: options.chatId,
@@ -1049,5 +1128,9 @@ export class BotRuntime {
             db: options.database,
             services: this.helperServices,
         };
+
+        context.bot = this.createContextBotProxy(context);
+
+        return context;
     }
 }

@@ -174,7 +174,57 @@ export class BotsController {
 
 Metadata includes a token preview, page count, and the presence of persistence or custom session storage—handy for admin panels.
 
-## 6. Prisma integration example
+## 6. Tracking outgoing messages
+
+`tg-bot-builder` lets you observe every message the runtime sends through the
+Telegram Bot API. Register observers with the `messageObservers` option to log
+replies, persist them to a database, or trigger custom side effects.
+
+```ts
+import { BotBuilder } from 'tg-bot-builder';
+
+@Module({
+    imports: [
+        BotBuilder.forRootAsync({
+            inject: [PrismaService],
+            useFactory: async (
+                prisma: PrismaService,
+            ): Promise<IBotBuilderOptions[]> => [
+                {
+                    TG_BOT_TOKEN: process.env.SUPPORT_TOKEN!,
+                    slug: 'support',
+                    prisma,
+                    pages,
+                    messageObservers: [async ({ context, payload, message }) => {
+                        await prisma.supportChatRoomMessage.create({
+                            data: {
+                                roomId: context.session?.roomId,
+                                type: 'text',
+                                text: payload.text,
+                                messageId: message.message_id,
+                                sender: 'BOT',
+                            },
+                        });
+                    }],
+                },
+            ],
+        }),
+    ],
+})
+export class SupportModule {}
+```
+
+Each observer receives the builder `context`, the original send `payload`
+(`text` and `SendMessageOptions`), and the resulting Telegram `message`. The
+runtime calls observers for messages sent from:
+
+- Page rendering (`content`, `validationFailed`, redirects, etc.).
+- Global and page middlewares that respond with text.
+- Manual replies issued via `ctx.bot.sendMessage(...)` inside handlers.
+
+Observers run sequentially; exceptions are logged but do not stop the runtime.
+
+## 7. Prisma integration example
 
 Supply a Prisma service whose schema contains the following structure:
 
@@ -245,7 +295,7 @@ export class AppModule {}
 
 Model names can be different as long as the relationships follow the same shape.
 
-## 7. `persistenceGatewayFactory`
+## 8. `persistenceGatewayFactory`
 
 `BotRuntime` lets you replace the persistence layer through `dependencies.persistenceGatewayFactory`. Use it when you need custom model names, a different ORM, or additional business logic.
 
@@ -511,7 +561,7 @@ export class PrismaGateway implements IPersistenceGateway {
 }
 ```
 
-## 8. Working without Prisma
+## 9. Working without Prisma
 
 When a bot configuration omits the `prisma` option, `createPersistenceGateway` returns a `NoopPersistenceGateway`. In this mode:
 
@@ -521,7 +571,7 @@ When a bot configuration omits the `prisma` option, `createPersistenceGateway` r
 
 This setup is useful for prototypes, tests, or when you manage persistence outside of Prisma.
 
-## 9. `createBotRuntimeMessages`
+## 10. `createBotRuntimeMessages`
 
 Runtime messages (logs and user prompts) can be localized with `createBotRuntimeMessages` or by providing `dependencies.messageFactory`.
 
@@ -556,7 +606,7 @@ const dependencies: BotRuntimeDependencies = {
 
 This approach enables centralized multilingual support or integration with an existing localization service.
 
-## 10. Testing and coverage
+## 11. Testing and coverage
 
 Jest is configured with `ts-jest` so that TypeScript sources and NestJS testing utilities work out of the box. The test harness
 loads `reflect-metadata`, mocks timer utilities from `@nestjs/testing`, and clears mocks between runs. To execute tests or collect

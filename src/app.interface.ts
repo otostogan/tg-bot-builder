@@ -54,6 +54,21 @@ export interface IBotBuilderContext {
     services: Record<string, unknown>;
 }
 
+export interface IBotSentMessagePayload {
+    text: string;
+    options?: TelegramBot.SendMessageOptions;
+}
+
+export interface IBotSentMessage {
+    context: IBotBuilderContext;
+    payload: IBotSentMessagePayload;
+    message: TelegramBot.Message;
+}
+
+export type TBotSentMessageObserver = (
+    sent: IBotSentMessage,
+) => void | Promise<void>;
+
 export interface IBotPageContentPayload {
     text: string;
     options?: TelegramBot.SendMessageOptions;
@@ -241,6 +256,7 @@ export interface IBotBuilderOptions {
     pageMiddlewares?: IBotPageMiddlewareConfig[];
     messages?: TBotRuntimeMessageOverrides;
     dependencies?: BotRuntimeDependencies;
+    messageObservers?: TBotSentMessageObserver[];
 }
 
 export interface IBotBuilderModuleAsyncOptions
