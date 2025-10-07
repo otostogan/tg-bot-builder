@@ -142,47 +142,33 @@ export class PrismaPersistenceGateway implements IPersistenceGateway {
 
         const targetPageId = currentPageId ?? session.pageId;
 
-        let stepState = (await this.prisma.stepState.findUnique({
-            where: {
-                userId_slug: {
-                    userId: user.id,
-                    slug: this.slug,
-                },
+        const stepStateWhere = {
+            userId_slug: {
+                userId: user.id,
+                slug: this.slug,
             },
-        })) as unknown as IPrismaStepState | null;
+        } as const;
 
-        if (!stepState) {
-            stepState = (await this.prisma.stepState.create({
-                data: {
-                    userId: user.id,
-                    chatId: chatIdentifier,
-                    slug: this.slug,
-                    currentPage: targetPageId ?? null,
-                    answers: serializeValue(session.data ?? {}, null),
-                    history: serializeValue([], null),
-                },
-            })) as unknown as IPrismaStepState;
-        } else {
-            const updates: Record<string, unknown> = {};
+        const stepStateUpdateData: Record<string, unknown> = {
+            chatId: chatIdentifier,
+        };
 
-            if (stepState.chatId !== chatIdentifier) {
-                updates.chatId = chatIdentifier;
-            }
-
-            if (
-                targetPageId !== undefined &&
-                stepState.currentPage !== targetPageId
-            ) {
-                updates.currentPage = targetPageId;
-            }
-
-            if (Object.keys(updates).length > 0) {
-                stepState = (await this.prisma.stepState.update({
-                    where: { id: stepState.id },
-                    data: updates,
-                })) as unknown as IPrismaStepState;
-            }
+        if (targetPageId !== undefined) {
+            stepStateUpdateData.currentPage = targetPageId;
         }
+
+        const stepState = (await this.prisma.stepState.upsert({
+            where: stepStateWhere,
+            create: {
+                userId: user.id,
+                chatId: chatIdentifier,
+                slug: this.slug,
+                currentPage: targetPageId ?? null,
+                answers: serializeValue(session.data ?? {}, null),
+                history: serializeValue([], null),
+            },
+            update: stepStateUpdateData,
+        })) as unknown as IPrismaStepState;
 
         return {
             user,

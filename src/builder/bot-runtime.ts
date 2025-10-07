@@ -222,7 +222,24 @@ export class BotRuntime {
      * subscribes to base message events.
      */
     private registerHandlers(handlers: IBotHandler[] = []): void {
-        this.bot.on('message', this.handleMessage);
+        const messagePipelines: TelegramBot.TelegramEvents['message'][] = [];
+
+        const baseMessageListener: TelegramBot.TelegramEvents['message'] = async (
+            ...args
+        ) => {
+            await this.handleMessage(...args);
+
+            for (const pipeline of messagePipelines) {
+                try {
+                    await pipeline(...args);
+                } catch (_error) {
+                    // Individual pipelines already trigger their onError callbacks.
+                    // Swallow the error here to keep subsequent handlers running.
+                }
+            }
+        };
+
+        this.bot.on('message', baseMessageListener);
 
         if (!Array.isArray(handlers) || handlers.length === 0) {
             return;
@@ -266,6 +283,13 @@ export class BotRuntime {
                 onError: (error) =>
                     this.logMiddlewareError(handler.event, error),
             });
+
+            if (handler.event === 'message') {
+                messagePipelines.push(
+                    pipeline as unknown as TelegramBot.TelegramEvents['message'],
+                );
+                continue;
+            }
 
             this.bot.on(
                 handler.event,
