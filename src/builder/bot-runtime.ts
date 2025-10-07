@@ -224,20 +224,17 @@ export class BotRuntime {
     private registerHandlers(handlers: IBotHandler[] = []): void {
         const messagePipelines: TelegramBot.TelegramEvents['message'][] = [];
 
-        const baseMessageListener: TelegramBot.TelegramEvents['message'] = async (
-            ...args
-        ) => {
-            await this.handleMessage(...args);
+        const baseMessageListener: TelegramBot.TelegramEvents['message'] =
+            async (...args) => {
+                // @ts-ignore
+                await this.handleMessage(...args);
 
-            for (const pipeline of messagePipelines) {
-                try {
-                    await pipeline(...args);
-                } catch (_error) {
-                    // Individual pipelines already trigger their onError callbacks.
-                    // Swallow the error here to keep subsequent handlers running.
+                for (const pipeline of messagePipelines) {
+                    try {
+                        await pipeline(...args);
+                    } catch {}
                 }
-            }
-        };
+            };
 
         this.bot.on('message', baseMessageListener);
 
@@ -895,9 +892,7 @@ export class BotRuntime {
         return trimmed.length > 0 ? trimmed : undefined;
     }
 
-    private async notifyMessageObservers(
-        sent: IBotSentMessage,
-    ): Promise<void> {
+    private async notifyMessageObservers(sent: IBotSentMessage): Promise<void> {
         if (this.messageObservers.length === 0) {
             return;
         }
@@ -915,9 +910,7 @@ export class BotRuntime {
         }
     }
 
-    private createContextBotProxy(
-        context: IBotBuilderContext,
-    ): TelegramBot {
+    private createContextBotProxy(context: IBotBuilderContext): TelegramBot {
         const target = this.bot;
         const runtime = this;
 
@@ -925,13 +918,17 @@ export class BotRuntime {
             get(value, property, receiver) {
                 const original = Reflect.get(value, property, receiver);
 
-                if (property === 'sendMessage' && typeof original === 'function') {
+                if (
+                    property === 'sendMessage' &&
+                    typeof original === 'function'
+                ) {
                     return async (
                         ...args: Parameters<TelegramBot['sendMessage']>
                     ) => {
                         const textArg = args[1] as string;
-                        const optionsArg =
-                            args[2] as TelegramBot.SendMessageOptions | undefined;
+                        const optionsArg = args[2] as
+                            | TelegramBot.SendMessageOptions
+                            | undefined;
                         const sentMessage = await original.apply(value, args);
                         await runtime.notifyMessageObservers({
                             context,
