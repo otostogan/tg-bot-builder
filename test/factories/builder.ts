@@ -29,6 +29,7 @@ export interface CreateTestBuilderServiceOptions {
 const DEFAULT_BOT_OPTIONS: IBotBuilderOptions = {
     TG_BOT_TOKEN: 'test-token',
     id: 'test-bot',
+    respondToGroupMessages: true,
     pages: [],
     handlers: [],
     middlewares: [],
@@ -42,6 +43,8 @@ const mergeBotOptions = (
 ): IBotBuilderOptions => ({
     ...DEFAULT_BOT_OPTIONS,
     ...overrides,
+    respondToGroupMessages:
+        overrides.respondToGroupMessages ?? DEFAULT_BOT_OPTIONS.respondToGroupMessages,
     pages: overrides.pages ?? [],
     handlers: overrides.handlers ?? [],
     middlewares: overrides.middlewares ?? [],

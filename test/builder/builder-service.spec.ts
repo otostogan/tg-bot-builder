@@ -64,6 +64,7 @@ describe('BuilderService', () => {
         keyboards: [],
         services: {},
         pageMiddlewares: [],
+        respondToGroupMessages: true,
         ...overrides,
     });
 

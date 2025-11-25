@@ -55,6 +55,7 @@ type ContextFactory = (
 
 export interface IBotRuntimeOptions extends IBotBuilderOptions {
     id: string;
+    respondToGroupMessages: boolean;
 }
 export interface BotRuntimeDependencies {
     pageNavigatorFactory?: (
@@ -96,6 +97,7 @@ export function normalizeBotOptions(
     const services = { ...(options.services ?? {}) };
     const pageMiddlewares = [...(options.pageMiddlewares ?? [])];
     const messageObservers = [...(options.messageObservers ?? [])];
+    const respondToGroupMessages = options.respondToGroupMessages ?? true;
     const slug = options.slug ?? 'default';
 
     const fallbackId =
@@ -125,6 +127,7 @@ export function normalizeBotOptions(
         services,
         pageMiddlewares,
         messageObservers,
+        respondToGroupMessages,
         slug,
         dependencies,
     } as IBotRuntimeOptions;
@@ -143,6 +146,7 @@ export class BotRuntime {
     private readonly globalMiddlewares: IBotMiddlewareConfig[];
     private readonly messages: IBotRuntimeMessages;
     private readonly messageObservers: TBotSentMessageObserver[];
+    private readonly respondToGroupMessages: boolean;
 
     /**
      * Boots the Telegram runtime by wiring helpers, persistence, middleware,
@@ -173,6 +177,7 @@ export class BotRuntime {
             options.middlewares ?? [],
         );
         this.messageObservers = options.messageObservers ?? [];
+        this.respondToGroupMessages = options.respondToGroupMessages;
 
         const providedSessionStorage = options.sessionStorage as
             | IBotSessionStorage<IChatSessionState | IBotSessionState>
@@ -217,6 +222,21 @@ export class BotRuntime {
         this.registerHandlers(options.handlers ?? []);
     }
 
+    private shouldHandleMessageFromChat(
+        message?: TelegramBot.Message,
+    ): boolean {
+        if (!message) {
+            return true;
+        }
+
+        if (this.respondToGroupMessages) {
+            return true;
+        }
+
+        const chatType = message.chat?.type;
+        return chatType === 'private' || chatType === 'sender';
+    }
+
     /**
      * Attaches middleware-wrapped listeners for each configured handler and
      * subscribes to base message events.
@@ -226,6 +246,14 @@ export class BotRuntime {
 
         const baseMessageListener: TelegramBot.TelegramEvents['message'] =
             async (...args) => {
+                const [message] = args as Parameters<
+                    TelegramBot.TelegramEvents['message']
+                >;
+
+                if (!this.shouldHandleMessageFromChat(message)) {
+                    return;
+                }
+
                 // @ts-ignore
                 await this.handleMessage(...args);
 
@@ -304,6 +332,10 @@ export class BotRuntime {
         metadata?: TelegramBot.Metadata,
     ): Promise<void> => {
         try {
+            if (!this.shouldHandleMessageFromChat(message)) {
+                return;
+            }
+
             const chatId = message.chat.id;
             const session = await this.sessionManager.getSession(chatId);
             if (message.from) {

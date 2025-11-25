@@ -92,6 +92,8 @@ import { PrismaService } from './prisma.service';
                                 `Thank you, ${ctx.session?.welcome}!`,
                         },
                     ],
+                    // Disable reactions to group chats if the bot should only work in direct messages
+                    respondToGroupMessages: false,
                 },
             ],
         }),

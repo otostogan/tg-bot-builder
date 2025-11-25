@@ -37,6 +37,7 @@ describe('PrismaPersistenceGateway', () => {
             findUnique: jest.fn(),
             create: jest.fn(),
             update: jest.fn(),
+            upsert: jest.fn(),
         },
         formEntry: {
             upsert: jest.fn(),
@@ -86,8 +87,7 @@ describe('PrismaPersistenceGateway', () => {
             };
 
             prisma.user.upsert.mockResolvedValue(userRecord);
-            prisma.stepState.findUnique.mockResolvedValue(null);
-            prisma.stepState.create.mockResolvedValue(createdStepState);
+            prisma.stepState.upsert.mockResolvedValue(createdStepState);
 
             const result = await gateway.ensureDatabaseState(
                 chatId,
@@ -110,8 +110,9 @@ describe('PrismaPersistenceGateway', () => {
                     chatId: chatId.toString(),
                 }),
             });
-            expect(prisma.stepState.create).toHaveBeenCalledWith({
-                data: {
+            expect(prisma.stepState.upsert).toHaveBeenCalledWith({
+                where: { userId_slug: { userId: userRecord.id, slug } },
+                create: {
                     userId: userRecord.id,
                     chatId: chatId.toString(),
                     slug,
@@ -119,7 +120,12 @@ describe('PrismaPersistenceGateway', () => {
                     answers: { foo: 'bar' },
                     history: [],
                 },
+                update: {
+                    chatId: chatId.toString(),
+                    currentPage: 'page-1',
+                },
             });
+            expect(prisma.stepState.create).not.toHaveBeenCalled();
             expect(prisma.stepState.update).not.toHaveBeenCalled();
             expect(result).toEqual({
                 user: userRecord,
@@ -159,8 +165,7 @@ describe('PrismaPersistenceGateway', () => {
             };
 
             prisma.user.upsert.mockResolvedValue(userRecord);
-            prisma.stepState.findUnique.mockResolvedValue(existingStepState);
-            prisma.stepState.update.mockResolvedValue(updatedStepState);
+            prisma.stepState.upsert.mockResolvedValue(updatedStepState);
 
             const result = await gateway.ensureDatabaseState(
                 chatId,
@@ -169,14 +174,23 @@ describe('PrismaPersistenceGateway', () => {
                 'fresh-page',
             );
 
-            expect(prisma.stepState.create).not.toHaveBeenCalled();
-            expect(prisma.stepState.update).toHaveBeenCalledWith({
-                where: { id: existingStepState.id },
-                data: {
+            expect(prisma.stepState.upsert).toHaveBeenCalledWith({
+                where: { userId_slug: { userId: userRecord.id, slug } },
+                create: {
+                    userId: userRecord.id,
+                    chatId: chatId.toString(),
+                    slug,
+                    currentPage: 'fresh-page',
+                    answers: {},
+                    history: [],
+                },
+                update: {
                     chatId: chatId.toString(),
                     currentPage: 'fresh-page',
                 },
             });
+            expect(prisma.stepState.create).not.toHaveBeenCalled();
+            expect(prisma.stepState.update).not.toHaveBeenCalled();
             expect(result).toEqual({
                 user: userRecord,
                 stepState: updatedStepState,
@@ -203,6 +217,7 @@ describe('PrismaPersistenceGateway', () => {
             expect(result).toEqual({});
             expect(prisma.user.upsert).not.toHaveBeenCalled();
             expect(prisma.stepState.findUnique).not.toHaveBeenCalled();
+            expect(prisma.stepState.upsert).not.toHaveBeenCalled();
         });
     });
 

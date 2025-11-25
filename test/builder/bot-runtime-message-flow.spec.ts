@@ -107,6 +107,7 @@ describe('BotRuntime message flow', () => {
             keyboards: [],
             pageMiddlewares: [],
             services: {},
+            respondToGroupMessages: true,
             ...options,
         } as IBotRuntimeOptions;
 
@@ -134,6 +135,23 @@ describe('BotRuntime message flow', () => {
             createStepState,
         };
     };
+
+    it('ignores group messages when respondToGroupMessages is false', async () => {
+        const { runtime, sessionManager } = createRuntime({
+            respondToGroupMessages: false,
+        });
+
+        const groupMessage = createMessage({
+            chat: { id: 999, type: 'group' },
+        });
+
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+        await (runtime as unknown as { handleMessage: Function }).handleMessage(
+            groupMessage,
+        );
+
+        expect(sessionManager.getSession).not.toHaveBeenCalled();
+    });
 
     it('starts from the initial page when the session has no pageId', async () => {
         const {
