@@ -84,6 +84,8 @@ describe('BotRuntime middleware context', () => {
             keyboards: options.keyboards ?? [],
             services: options.services ?? {},
             pageMiddlewares: options.pageMiddlewares ?? [],
+            respondToGroupMessages:
+                options.respondToGroupMessages ?? true,
         } as IBotRuntimeOptions;
 
         const dependencies = {

@@ -56,6 +56,7 @@ export class BotRegistryService {
             services: Object.keys(options.services ?? {}),
             hasPersistence: Boolean(options.prisma),
             hasCustomSessionStorage: Boolean(options.sessionStorage),
+            respondToGroupMessages: options.respondToGroupMessages,
         };
     }
 

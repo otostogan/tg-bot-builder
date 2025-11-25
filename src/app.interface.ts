@@ -239,11 +239,13 @@ export interface IBotRegistryMetadata {
     services: string[];
     hasPersistence: boolean;
     hasCustomSessionStorage: boolean;
+    respondToGroupMessages: boolean;
 }
 
 export interface IBotBuilderOptions {
     TG_BOT_TOKEN: string;
     id?: string;
+    respondToGroupMessages?: boolean;
     pages?: IBotPage[];
     handlers?: IBotHandler[];
     middlewares?: IBotMiddlewareConfig[];
