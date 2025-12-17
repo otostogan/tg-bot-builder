@@ -234,7 +234,7 @@ export class BotRuntime {
         }
 
         const chatType = message.chat?.type;
-        return chatType === 'private' || chatType === 'sender';
+        return chatType === 'private';
     }
 
     /**
@@ -301,6 +301,7 @@ export class BotRuntime {
                 handler: async (
                     ...args: Parameters<typeof handler.listener>
                 ) => {
+                    // @ts-ignore
                     await Promise.resolve(handler.listener(...args));
                 },
                 contextFactory: (event, args) =>
@@ -944,7 +945,6 @@ export class BotRuntime {
 
     private createContextBotProxy(context: IBotBuilderContext): TelegramBot {
         const target = this.bot;
-        const runtime = this;
 
         const proxy = new Proxy(target, {
             get(value, property, receiver) {
@@ -962,7 +962,7 @@ export class BotRuntime {
                             | TelegramBot.SendMessageOptions
                             | undefined;
                         const sentMessage = await original.apply(value, args);
-                        await runtime.notifyMessageObservers({
+                        await this.notifyMessageObservers({
                             context,
                             payload: { text: textArg, options: optionsArg },
                             message: sentMessage,
