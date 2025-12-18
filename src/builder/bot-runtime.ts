@@ -945,6 +945,7 @@ export class BotRuntime {
 
     private createContextBotProxy(context: IBotBuilderContext): TelegramBot {
         const target = this.bot;
+        const runtime = this;
 
         const proxy = new Proxy(target, {
             get(value, property, receiver) {
@@ -962,7 +963,7 @@ export class BotRuntime {
                             | TelegramBot.SendMessageOptions
                             | undefined;
                         const sentMessage = await original.apply(value, args);
-                        await this.notifyMessageObservers({
+                        await runtime.notifyMessageObservers({
                             context,
                             payload: { text: textArg, options: optionsArg },
                             message: sentMessage,
