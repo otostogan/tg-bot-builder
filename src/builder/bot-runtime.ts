@@ -237,6 +237,20 @@ export class BotRuntime {
         return chatType === 'private';
     }
 
+    private shouldHandleEventFromArgs(args: unknown[]): boolean {
+        const message = this.extractMessageFromArgs(args);
+        if (message) {
+            return this.shouldHandleMessageFromChat(message);
+        }
+
+        if (this.respondToGroupMessages) {
+            return true;
+        }
+
+        const chatType = this.resolveChatTypeFromArgs(args);
+        return chatType === undefined || chatType === 'private';
+    }
+
     /**
      * Attaches middleware-wrapped listeners for each configured handler and
      * subscribes to base message events.
@@ -317,10 +331,17 @@ export class BotRuntime {
                 continue;
             }
 
-            this.bot.on(
-                handler.event,
-                pipeline as TelegramBot.TelegramEvents[typeof handler.event],
-            );
+            const listener = (async (...args: unknown[]) => {
+                if (!this.shouldHandleEventFromArgs(args)) {
+                    return;
+                }
+
+                await (
+                    pipeline as (...pipelineArgs: unknown[]) => Promise<void>
+                )(...args);
+            }) as TelegramBot.TelegramEvents[typeof handler.event];
+
+            this.bot.on(handler.event, listener);
         }
     }
 
@@ -666,6 +687,44 @@ export class BotRuntime {
             if (from && from.id !== undefined) {
                 return from.id;
             }
+        }
+
+        return undefined;
+    }
+
+    private resolveChatTypeFromArgs(
+        args: unknown[],
+    ): TelegramBot.Chat['type'] | undefined {
+        for (const arg of args) {
+            const chatType = this.extractChatTypeFromValue(arg);
+            if (chatType !== undefined) {
+                return chatType;
+            }
+        }
+
+        return undefined;
+    }
+
+    private extractChatTypeFromValue(
+        value: unknown,
+    ): TelegramBot.Chat['type'] | undefined {
+        if (!value || typeof value !== 'object') {
+            return undefined;
+        }
+
+        const record = value as Record<string, unknown>;
+
+        if ('chat' in record) {
+            const chat = record.chat as
+                | { type?: TelegramBot.Chat['type'] }
+                | undefined;
+            if (chat?.type !== undefined) {
+                return chat.type;
+            }
+        }
+
+        if ('message' in record) {
+            return this.extractChatTypeFromValue(record.message);
         }
 
         return undefined;

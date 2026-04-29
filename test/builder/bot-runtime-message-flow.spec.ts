@@ -15,7 +15,7 @@ describe('BotRuntime message flow', () => {
             verbose: jest.fn(),
             debug: jest.fn(),
             setContext: jest.fn(),
-        }) as unknown as Logger;
+		}) as unknown as Logger;
 
     const createMessage = (
         overrides: Partial<TelegramBot.Message> = {},
@@ -150,6 +150,95 @@ describe('BotRuntime message flow', () => {
             groupMessage,
         );
 
+        expect(sessionManager.getSession).not.toHaveBeenCalled();
+    });
+
+    it('handles private messages when group handling is disabled', async () => {
+        const { runtime, sessionManager, persistenceGateway, createStepState } =
+            createRuntime({
+                respondToGroupMessages: false,
+            });
+
+        const session = { pageId: undefined, data: {} } as IChatSessionState;
+        const stepState = createStepState({ currentPage: null });
+
+        sessionManager.getSession.mockResolvedValue(session);
+        persistenceGateway.ensureDatabaseState.mockResolvedValue({
+            stepState,
+        });
+
+        const message = createMessage({
+            chat: { id: 123, type: 'private' },
+        });
+
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+        await (runtime as unknown as { handleMessage: Function }).handleMessage(
+            message,
+        );
+
+        expect(sessionManager.getSession).toHaveBeenCalledWith(123);
+    });
+
+    it('ignores group callback handlers when group handling is disabled', async () => {
+        const listener = jest.fn();
+        const { runtime, sessionManager } = createRuntime({
+            respondToGroupMessages: false,
+            handlers: [
+                {
+                    event: 'callback_query',
+                    listener,
+                } as unknown as IBotRuntimeOptions['handlers'][number],
+            ],
+        });
+
+        const onCalls = (
+            runtime.bot.on as unknown as jest.Mock
+        ).mock.calls as [string, (...args: unknown[]) => Promise<void>][];
+        const callbackListener = onCalls.find(
+            ([event]) => event === 'callback_query',
+        )?.[1];
+
+        await callbackListener?.({
+            id: 'callback-id',
+            from: { id: 321, is_bot: false, first_name: 'Tester' },
+            message: createMessage({
+                chat: { id: 999, type: 'group' },
+            }),
+            data: 'action',
+        });
+
+        expect(listener).not.toHaveBeenCalled();
+        expect(sessionManager.getSession).not.toHaveBeenCalled();
+    });
+
+    it('ignores chat-scoped handlers from groups when group handling is disabled', async () => {
+        const listener = jest.fn();
+        const { runtime, sessionManager } = createRuntime({
+            respondToGroupMessages: false,
+            handlers: [
+                {
+                    event: 'my_chat_member',
+                    listener,
+                } as unknown as IBotRuntimeOptions['handlers'][number],
+            ],
+        });
+
+        const onCalls = (
+            runtime.bot.on as unknown as jest.Mock
+        ).mock.calls as [string, (...args: unknown[]) => Promise<void>][];
+        const chatMemberListener = onCalls.find(
+            ([event]) => event === 'my_chat_member',
+        )?.[1];
+
+        await chatMemberListener?.({
+            chat: { id: 999, type: 'supergroup' },
+            from: { id: 321, is_bot: false, first_name: 'Tester' },
+            date: 0,
+            old_chat_member: {},
+            new_chat_member: {},
+        });
+
+        expect(listener).not.toHaveBeenCalled();
         expect(sessionManager.getSession).not.toHaveBeenCalled();
     });
 
